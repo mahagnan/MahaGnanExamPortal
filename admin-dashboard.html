@@ -38,21 +38,33 @@
       </div>
       <a href="admin-submissions.html" class="btn btn-primary" style="align-self:center; margin:0;">View All Submissions &rarr;</a>
     </div>
+    <div class="mt-24" style="border-top:1px solid rgba(255,255,255,0.12); padding-top:18px;">
+      <div class="flex-between" style="flex-wrap:wrap; gap:12px;">
+        <div>
+          <div style="color:var(--white); font-weight:600;">Results Visibility</div>
+          <p class="small-note" style="margin:2px 0 0;">Controls whether ALL graded students can see their results when they log in.</p>
+        </div>
+        <button class="btn btn-sm" id="publishToggleBtn">Loading...</button>
+      </div>
+    </div>
   </div>
 
   <div class="circuit-divider"><span class="node"></span></div>
 
   <h2>Question Bank</h2>
-  <p class="small-note">Post the 10 interview questions, 3 easy coding questions, and 2 hard coding questions. Order is jumbled automatically per student.</p>
+  <p class="small-note">Post interview and coding questions. Order is jumbled automatically per student. Use labels to organize (e.g. "Easy", "Hard", "SQL", "Arrays") — type any label you like.</p>
 
   <div class="card mt-24">
     <h3>Add Question</h3>
-    <label for="qType">Type</label>
-    <select id="qType">
-      <option value="interview">Interview (text answer)</option>
-      <option value="coding-easy">Coding — Easy</option>
-      <option value="coding-hard">Coding — Hard</option>
+    <label for="qCategory">Category</label>
+    <select id="qCategory">
+      <option value="interview">Interview (plain text answer)</option>
+      <option value="coding">Coding (code editor answer)</option>
     </select>
+
+    <label for="qLabel">Label <span class="small-note">(your own tag — Easy, Hard, SQL, Arrays, anything)</span></label>
+    <input type="text" id="qLabel" list="labelSuggestions" placeholder="e.g. Easy" />
+    <datalist id="labelSuggestions"></datalist>
 
     <label for="qText">Question</label>
     <textarea id="qText" placeholder="Type the question here...
@@ -70,8 +82,7 @@ Wrap text in **double asterisks** to make it bold."></textarea>
     <h3>Posted Questions</h3>
     <div class="flex gap-8">
       <span class="badge badge-green" id="countInterview">0 Interview</span>
-      <span class="badge badge-amber" id="countEasy">0 Easy</span>
-      <span class="badge badge-red" id="countHard">0 Hard</span>
+      <span class="badge badge-amber" id="countCoding">0 Coding</span>
     </div>
   </div>
 
@@ -82,14 +93,28 @@ Wrap text in **double asterisks** to make it bold."></textarea>
   import { auth } from "./js/firebase-config.js";
   import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { isAdmin, logoutUser } from "./js/auth.js";
-  import { addQuestion, getAllQuestions, deleteQuestion, getAllSubmissions, updateQuestion } from "./js/admin.js";
-  import { formatQuestionText } from "./js/format.js";
+  import { addQuestion, getAllQuestions, deleteQuestion, getAllSubmissions, updateQuestion, getResultsPublished, setResultsPublished } from "./js/admin.js";
+  import { formatQuestionText, normalizeQuestion } from "./js/format.js";
 
   async function renderStats() {
     const subs = await getAllSubmissions();
     document.getElementById("statTotal").textContent = subs.length;
     document.getElementById("statSubmitted").textContent = subs.filter(s => s.status === "submitted").length;
     document.getElementById("statAuto").textContent = subs.filter(s => s.status === "auto-submitted").length;
+  }
+
+  async function renderPublishToggle() {
+    const btn = document.getElementById("publishToggleBtn");
+    const published = await getResultsPublished();
+    btn.textContent = published ? "Published — Click to Hide" : "Hidden — Click to Publish";
+    btn.className = published ? "btn btn-sm btn-primary" : "btn btn-sm btn-outline";
+    btn.style.color = published ? "" : "var(--white)";
+    btn.style.borderColor = published ? "" : "var(--white)";
+    btn.onclick = async () => {
+      btn.disabled = true;
+      await setResultsPublished(!published);
+      await renderPublishToggle();
+    };
   }
 
   onAuthStateChanged(auth, async (user) => {
@@ -99,6 +124,7 @@ Wrap text in **double asterisks** to make it bold."></textarea>
     }
     renderList();
     renderStats();
+    renderPublishToggle();
   });
 
   document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -107,7 +133,8 @@ Wrap text in **double asterisks** to make it bold."></textarea>
   });
 
   document.getElementById("addBtn").addEventListener("click", async () => {
-    const type = document.getElementById("qType").value;
+    const category = document.getElementById("qCategory").value;
+    const label = document.getElementById("qLabel").value.trim() || (category === "interview" ? "Interview" : "Coding");
     const text = document.getElementById("qText").value.trim();
     const errorMsg = document.getElementById("errorMsg");
     errorMsg.textContent = "";
@@ -117,28 +144,34 @@ Wrap text in **double asterisks** to make it bold."></textarea>
       return;
     }
 
-    await addQuestion({ type, text });
+    await addQuestion({ category, label, text });
     document.getElementById("qText").value = "";
+    document.getElementById("qLabel").value = "";
     renderList();
   });
 
   async function renderList() {
-    const questions = await getAllQuestions();
+    const raw = await getAllQuestions();
+    const questions = raw.map(normalizeQuestion);
     const list = document.getElementById("questionsList");
     list.innerHTML = "";
 
-    const counts = { interview: 0, "coding-easy": 0, "coding-hard": 0 };
+    // Populate label suggestions from existing questions
+    const labelSet = [...new Set(questions.map(q => q.label))];
+    const datalist = document.getElementById("labelSuggestions");
+    datalist.innerHTML = labelSet.map(l => `<option value="${l}"></option>`).join("");
+
+    const counts = { interview: 0, coding: 0 };
 
     questions.forEach(q => {
-      counts[q.type] = (counts[q.type] || 0) + 1;
+      counts[q.category] = (counts[q.category] || 0) + 1;
       const card = document.createElement("div");
       card.className = "card mt-16";
-      const badgeClass = q.type === "interview" ? "badge-green" : q.type === "coding-easy" ? "badge-amber" : "badge-red";
-      const label = q.type === "interview" ? "Interview" : q.type === "coding-easy" ? "Coding · Easy" : "Coding · Hard";
+      const badgeClass = q.category === "interview" ? "badge-green" : "badge-amber";
 
       card.innerHTML = `
         <div class="flex-between">
-          <span class="badge ${badgeClass}">${label}</span>
+          <span class="badge ${badgeClass}">${q.category === "interview" ? "Interview" : "Coding"} · ${q.label}</span>
           <div class="flex gap-8">
             <button class="btn btn-outline btn-sm editBtn">Edit</button>
             <button class="btn btn-outline btn-sm delBtn">Delete</button>
@@ -146,7 +179,15 @@ Wrap text in **double asterisks** to make it bold."></textarea>
         </div>
         <p class="question-list-text viewMode">${formatQuestionText(q.text)}</p>
         <div class="editMode hidden">
-          <textarea class="editTextarea mt-16">${q.text}</textarea>
+          <label>Category</label>
+          <select class="editCategory">
+            <option value="interview" ${q.category === "interview" ? "selected" : ""}>Interview</option>
+            <option value="coding" ${q.category === "coding" ? "selected" : ""}>Coding</option>
+          </select>
+          <label>Label</label>
+          <input type="text" class="editLabel" value="${q.label}" />
+          <label>Question</label>
+          <textarea class="editTextarea">${q.text}</textarea>
           <div class="flex gap-8 mt-16">
             <button class="btn btn-primary btn-sm saveBtn">Save Changes</button>
             <button class="btn btn-outline btn-sm cancelBtn">Cancel</button>
@@ -164,9 +205,11 @@ Wrap text in **double asterisks** to make it bold."></textarea>
         editMode.classList.add("hidden");
       });
       card.querySelector(".saveBtn").addEventListener("click", async () => {
+        const newCategory = card.querySelector(".editCategory").value;
+        const newLabel = card.querySelector(".editLabel").value.trim() || "General";
         const newText = card.querySelector(".editTextarea").value.trim();
         if (!newText) return;
-        await updateQuestion(q.id, { type: q.type, text: newText });
+        await updateQuestion(q.id, { category: newCategory, label: newLabel, text: newText });
         renderList();
       });
       card.querySelector(".delBtn").addEventListener("click", async () => {
@@ -178,9 +221,8 @@ Wrap text in **double asterisks** to make it bold."></textarea>
       list.appendChild(card);
     });
 
-    document.getElementById("countInterview").textContent = `${counts["interview"] || 0} Interview`;
-    document.getElementById("countEasy").textContent = `${counts["coding-easy"] || 0} Easy`;
-    document.getElementById("countHard").textContent = `${counts["coding-hard"] || 0} Hard`;
+    document.getElementById("countInterview").textContent = `${counts.interview || 0} Interview`;
+    document.getElementById("countCoding").textContent = `${counts.coding || 0} Coding`;
   }
 </script>
 

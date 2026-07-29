@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Face Verification — Mah'a Gnan</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+</head>
+<body>
+
+<div class="page-center">
+  <div class="card" style="max-width:460px; width:100%;">
+    <div class="brand-header">
+      <img src="assets/logo.png" alt="Mah'a Gnan" />
+      <h1>Face Verification</h1>
+      <div class="tagline">Confirm it's you before the exam begins</div>
+    </div>
+
+    <p class="small-note text-center">Look directly at the camera in good lighting. This confirms your identity against the reference photo on your account.</p>
+
+    <div class="text-center mt-16">
+      <video id="cam" autoplay muted playsinline style="width:100%; max-width:300px; border-radius:8px; background:#000;"></video>
+    </div>
+
+    <div id="statusArea" class="text-center mt-24">
+      <div class="loader" id="loader"></div>
+      <p class="small-note" id="statusText">Loading face verification models...</p>
+    </div>
+
+    <button class="btn btn-primary hidden" id="verifyBtn">Verify My Face</button>
+    <button class="btn btn-outline btn-block hidden mt-16" id="retryBtn">Try Again</button>
+    <a href="exam.html" id="proceedLink" class="btn btn-primary hidden" style="text-decoration:none; text-align:center;">Proceed to Exam &rarr;</a>
+  </div>
+</div>
+
+<script type="module">
+  import { auth } from "./js/firebase-config.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getStudentProfile } from "./js/auth.js";
+  import { verifyFaceAgainstReference, loadFaceModels } from "./js/face-detection.js";
+
+  const video = document.getElementById("cam");
+  const statusText = document.getElementById("statusText");
+  const loader = document.getElementById("loader");
+  const verifyBtn = document.getElementById("verifyBtn");
+  const retryBtn = document.getElementById("retryBtn");
+  const proceedLink = document.getElementById("proceedLink");
+
+  let profile = null;
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      window.location.href = "student-login.html";
+      return;
+    }
+    profile = await getStudentProfile(user.uid);
+    if (!profile || !profile.referencePhotoURL) {
+      statusText.textContent = "No reference photo found on your account. Please contact admin.";
+      loader.classList.add("hidden");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+    } catch (err) {
+      statusText.textContent = "Camera access is required to proceed.";
+      loader.classList.add("hidden");
+      return;
+    }
+
+    await loadFaceModels();
+    loader.classList.add("hidden");
+    statusText.textContent = "Ready. Click below to verify your face.";
+    verifyBtn.classList.remove("hidden");
+  });
+
+  verifyBtn.addEventListener("click", async () => {
+    verifyBtn.disabled = true;
+    statusText.textContent = "Verifying...";
+    loader.classList.remove("hidden");
+    verifyBtn.classList.add("hidden");
+
+    try {
+      const result = await verifyFaceAgainstReference(video, profile.referencePhotoURL);
+      loader.classList.add("hidden");
+
+      if (result.match) {
+        statusText.textContent = "Identity verified. You may proceed.";
+        statusText.style.color = "var(--green-deep)";
+        proceedLink.classList.remove("hidden");
+      } else {
+        statusText.textContent = "Face did not match your reference photo. Please try again with better lighting and a direct look at the camera.";
+        statusText.style.color = "var(--red-alert)";
+        retryBtn.classList.remove("hidden");
+      }
+    } catch (err) {
+      loader.classList.add("hidden");
+      statusText.textContent = "Verification error: " + err.message;
+      statusText.style.color = "var(--red-alert)";
+      retryBtn.classList.remove("hidden");
+    }
+  });
+
+  retryBtn.addEventListener("click", () => {
+    retryBtn.classList.add("hidden");
+    verifyBtn.classList.remove("hidden");
+    verifyBtn.disabled = false;
+    statusText.style.color = "var(--gray-text)";
+    statusText.textContent = "Ready. Click below to verify your face.";
+  });
+</script>
+
+</body>
+</html>

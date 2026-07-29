@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Submissions — Mah'a Gnan Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <img src="assets/logo.png" alt="" />
+    <span>Mah'a <em>Gnan</em> Admin</span>
+  </div>
+  <div class="flex gap-16" style="align-items:center;">
+    <a href="admin-dashboard.html">Question Bank</a>
+    <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
+  </div>
+</div>
+
+<div class="container">
+  <h2>Student Submissions</h2>
+  <p class="small-note">Select a student to view answers, grade manually, and review proctoring snapshots.</p>
+
+  <div class="card mt-24" style="padding:0; overflow:hidden;">
+    <table>
+      <thead>
+        <tr><th>Student</th><th>Status</th><th>Warnings</th><th>Snapshots</th><th></th></tr>
+      </thead>
+      <tbody id="subTableBody"></tbody>
+    </table>
+  </div>
+
+  <div id="detailPanel" class="mt-24 hidden"></div>
+</div>
+
+<script type="module">
+  import { auth } from "./js/firebase-config.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { isAdmin, logoutUser } from "./js/auth.js";
+  import { getAllSubmissions, getAllQuestions, saveGrade, clearViolationImages, deleteSubmission } from "./js/admin.js";
+
+  let submissions = [];
+  let questions = [];
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user || !(await isAdmin(user.uid))) {
+      window.location.href = "admin-login.html";
+      return;
+    }
+    questions = await getAllQuestions();
+    await loadSubmissions();
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await logoutUser();
+    window.location.href = "admin-login.html";
+  });
+
+  async function loadSubmissions() {
+    submissions = await getAllSubmissions();
+    const body = document.getElementById("subTableBody");
+    body.innerHTML = "";
+
+    submissions.forEach(sub => {
+      const row = document.createElement("tr");
+      const statusBadge = sub.status === "submitted" ? "badge-green" : sub.status === "auto-submitted" ? "badge-red" : "badge-amber";
+      row.innerHTML = `
+        <td><strong>${sub.studentName || "—"}</strong><br/><span class="small-note">${sub.studentEmail || ""}</span></td>
+        <td><span class="badge ${statusBadge}">${sub.status}</span></td>
+        <td>${sub.violationCount || 0} / 3</td>
+        <td>${(sub.violationImages || []).length}</td>
+        <td><button class="btn btn-outline btn-sm viewBtn">Review</button></td>
+      `;
+      row.querySelector(".viewBtn").addEventListener("click", () => showDetail(sub));
+      body.appendChild(row);
+    });
+  }
+
+  function showDetail(sub) {
+    const panel = document.getElementById("detailPanel");
+    panel.classList.remove("hidden");
+
+    const anyAnswerFound = questions.some(q => sub.answers && sub.answers[q.id]);
+    const hasAnswersButNoMatch = sub.answers && Object.keys(sub.answers).length > 0 && !anyAnswerFound;
+
+    const answersHtml = questions.map(q => {
+      const answerText = (sub.answers && sub.answers[q.id]) || "(no answer)";
+      const existingGrade = (sub.grades && sub.grades[q.id]) || { marks: "", remarks: "" };
+      const badgeClass = q.type === "interview" ? "badge-green" : q.type === "coding-easy" ? "badge-amber" : "badge-red";
+      return `
+        <div class="card mt-16">
+          <span class="badge ${badgeClass}">${q.type}</span>
+          <p style="color:var(--ink); font-weight:600; margin-top:10px;">${q.text}</p>
+          <div class="circuit-divider" style="margin:10px 0;"><span class="node"></span></div>
+          <pre style="white-space:pre-wrap; font-family:inherit; background:var(--bg-soft); padding:12px; border-radius:6px;">${answerText}</pre>
+          <div class="flex gap-16 mt-16">
+            <div style="flex:1;">
+              <label>Marks</label>
+              <input type="number" class="marksInput" data-qid="${q.id}" value="${existingGrade.marks}" min="0" max="10" />
+            </div>
+            <div style="flex:2;">
+              <label>Remarks</label>
+              <input type="text" class="remarksInput" data-qid="${q.id}" value="${existingGrade.remarks}" />
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const imagesHtml = (sub.violationImages || []).map(url => `
+      <img src="${url}" style="width:110px; height:80px; object-fit:cover; border-radius:6px; border:1px solid var(--gray-line);" />
+    `).join("");
+
+    panel.innerHTML = `
+      <div class="circuit-divider"><span class="node"></span></div>
+      <div class="flex-between">
+        <h3>${sub.studentName} — Answers &amp; Grading</h3>
+        <button class="btn btn-danger btn-sm" id="deleteSubBtn">Delete This Submission</button>
+      </div>
+      ${hasAnswersButNoMatch ? `
+        <div class="card mt-16" style="border-color:var(--red-alert); background:var(--red-pale);">
+          <p style="color:var(--red-alert); margin:0;"><strong>This submission's answers don't match any current question.</strong>
+          This happens when a question was deleted and re-added after the student submitted (which creates a new question ID).
+          The original answers still exist in the database but can't be displayed against today's question list.
+          Delete this submission and have the student retake the exam if needed.</p>
+        </div>
+      ` : ""}
+      ${answersHtml}
+
+      <div class="card mt-24">
+        <div class="flex-between">
+          <h3>Proctoring Snapshots (${(sub.violationImages || []).length})</h3>
+          <button class="btn btn-danger btn-sm" id="clearImagesBtn">Delete All Snapshots</button>
+        </div>
+        <div class="flex gap-8 mt-16" style="flex-wrap:wrap;">
+          ${imagesHtml || '<p class="small-note">No snapshots recorded.</p>'}
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="saveGradesBtn">Save Grades</button>
+    `;
+
+    panel.querySelector("#deleteSubBtn").addEventListener("click", async () => {
+      if (confirm(`Permanently delete ${sub.studentName}'s submission? This cannot be undone.`)) {
+        await deleteSubmission(sub.id);
+        panel.classList.add("hidden");
+        loadSubmissions();
+      }
+    });
+
+    panel.querySelector("#saveGradesBtn").addEventListener("click", async () => {
+      const marksInputs = panel.querySelectorAll(".marksInput");
+      for (const input of marksInputs) {
+        const qid = input.dataset.qid;
+        const remarksInput = panel.querySelector(`.remarksInput[data-qid="${qid}"]`);
+        await saveGrade(sub.id, qid, Number(input.value) || 0, remarksInput.value);
+      }
+      alert("Grades saved.");
+    });
+
+    panel.querySelector("#clearImagesBtn").addEventListener("click", async () => {
+      if (confirm("Delete all snapshot references for this student? (Remove the actual files from your Cloudinary dashboard too.)")) {
+        await clearViolationImages(sub.id);
+        sub.violationImages = [];
+        showDetail(sub);
+        loadSubmissions();
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

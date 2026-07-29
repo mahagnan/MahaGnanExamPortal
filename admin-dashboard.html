@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Dashboard — Mah'a Gnan</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <img src="assets/logo.png" alt="" />
+    <span>Mah'a <em>Gnan</em> Admin</span>
+  </div>
+  <div class="flex gap-16" style="align-items:center;">
+    <a href="admin-submissions.html">Submissions &amp; Grading</a>
+    <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="card" style="background:var(--black); border:none;">
+    <div class="flex-between" style="flex-wrap:wrap; gap:20px;">
+      <div>
+        <div class="small-note" style="color:var(--green-bright); text-transform:uppercase; letter-spacing:0.08em; font-size:0.7rem;">Total Students Attempted</div>
+        <div style="font-family:var(--font-display); font-size:2rem; font-weight:700; color:var(--white);" id="statTotal">—</div>
+      </div>
+      <div>
+        <div class="small-note" style="color:var(--green-bright); text-transform:uppercase; letter-spacing:0.08em; font-size:0.7rem;">Submitted</div>
+        <div style="font-family:var(--font-display); font-size:2rem; font-weight:700; color:var(--white);" id="statSubmitted">—</div>
+      </div>
+      <div>
+        <div class="small-note" style="color:var(--green-bright); text-transform:uppercase; letter-spacing:0.08em; font-size:0.7rem;">Auto-Submitted (Violations)</div>
+        <div style="font-family:var(--font-display); font-size:2rem; font-weight:700; color:var(--white);" id="statAuto">—</div>
+      </div>
+      <a href="admin-submissions.html" class="btn btn-primary" style="align-self:center; margin:0;">View All Submissions &rarr;</a>
+    </div>
+  </div>
+
+  <div class="circuit-divider"><span class="node"></span></div>
+
+  <h2>Question Bank</h2>
+  <p class="small-note">Post the 10 interview questions, 3 easy coding questions, and 2 hard coding questions. Order is jumbled automatically per student.</p>
+
+  <div class="card mt-24">
+    <h3>Add Question</h3>
+    <label for="qType">Type</label>
+    <select id="qType">
+      <option value="interview">Interview (text answer)</option>
+      <option value="coding-easy">Coding — Easy</option>
+      <option value="coding-hard">Coding — Hard</option>
+    </select>
+
+    <label for="qText">Question</label>
+    <textarea id="qText" placeholder="Type the question here...
+Press Enter for new lines.
+Wrap text in **double asterisks** to make it bold."></textarea>
+    <p class="small-note">Line breaks are preserved exactly as you type them. Use **text** for bold.</p>
+
+    <div class="error-text" id="errorMsg"></div>
+    <button class="btn btn-primary" id="addBtn">Add Question</button>
+  </div>
+
+  <div class="circuit-divider"><span class="node"></span></div>
+
+  <div class="flex-between mt-16">
+    <h3>Posted Questions</h3>
+    <div class="flex gap-8">
+      <span class="badge badge-green" id="countInterview">0 Interview</span>
+      <span class="badge badge-amber" id="countEasy">0 Easy</span>
+      <span class="badge badge-red" id="countHard">0 Hard</span>
+    </div>
+  </div>
+
+  <div id="questionsList"></div>
+</div>
+
+<script type="module">
+  import { auth } from "./js/firebase-config.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { isAdmin, logoutUser } from "./js/auth.js";
+  import { addQuestion, getAllQuestions, deleteQuestion, getAllSubmissions, updateQuestion } from "./js/admin.js";
+  import { formatQuestionText } from "./js/format.js";
+
+  async function renderStats() {
+    const subs = await getAllSubmissions();
+    document.getElementById("statTotal").textContent = subs.length;
+    document.getElementById("statSubmitted").textContent = subs.filter(s => s.status === "submitted").length;
+    document.getElementById("statAuto").textContent = subs.filter(s => s.status === "auto-submitted").length;
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user || !(await isAdmin(user.uid))) {
+      window.location.href = "admin-login.html";
+      return;
+    }
+    renderList();
+    renderStats();
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await logoutUser();
+    window.location.href = "admin-login.html";
+  });
+
+  document.getElementById("addBtn").addEventListener("click", async () => {
+    const type = document.getElementById("qType").value;
+    const text = document.getElementById("qText").value.trim();
+    const errorMsg = document.getElementById("errorMsg");
+    errorMsg.textContent = "";
+
+    if (!text) {
+      errorMsg.textContent = "Please enter question text.";
+      return;
+    }
+
+    await addQuestion({ type, text });
+    document.getElementById("qText").value = "";
+    renderList();
+  });
+
+  async function renderList() {
+    const questions = await getAllQuestions();
+    const list = document.getElementById("questionsList");
+    list.innerHTML = "";
+
+    const counts = { interview: 0, "coding-easy": 0, "coding-hard": 0 };
+
+    questions.forEach(q => {
+      counts[q.type] = (counts[q.type] || 0) + 1;
+      const card = document.createElement("div");
+      card.className = "card mt-16";
+      const badgeClass = q.type === "interview" ? "badge-green" : q.type === "coding-easy" ? "badge-amber" : "badge-red";
+      const label = q.type === "interview" ? "Interview" : q.type === "coding-easy" ? "Coding · Easy" : "Coding · Hard";
+
+      card.innerHTML = `
+        <div class="flex-between">
+          <span class="badge ${badgeClass}">${label}</span>
+          <div class="flex gap-8">
+            <button class="btn btn-outline btn-sm editBtn">Edit</button>
+            <button class="btn btn-outline btn-sm delBtn">Delete</button>
+          </div>
+        </div>
+        <p class="question-list-text viewMode">${formatQuestionText(q.text)}</p>
+        <div class="editMode hidden">
+          <textarea class="editTextarea mt-16">${q.text}</textarea>
+          <div class="flex gap-8 mt-16">
+            <button class="btn btn-primary btn-sm saveBtn">Save Changes</button>
+            <button class="btn btn-outline btn-sm cancelBtn">Cancel</button>
+          </div>
+        </div>
+      `;
+      const viewMode = card.querySelector(".viewMode");
+      const editMode = card.querySelector(".editMode");
+      card.querySelector(".editBtn").addEventListener("click", () => {
+        viewMode.classList.add("hidden");
+        editMode.classList.remove("hidden");
+      });
+      card.querySelector(".cancelBtn").addEventListener("click", () => {
+        viewMode.classList.remove("hidden");
+        editMode.classList.add("hidden");
+      });
+      card.querySelector(".saveBtn").addEventListener("click", async () => {
+        const newText = card.querySelector(".editTextarea").value.trim();
+        if (!newText) return;
+        await updateQuestion(q.id, { type: q.type, text: newText });
+        renderList();
+      });
+      card.querySelector(".delBtn").addEventListener("click", async () => {
+        if (confirm("Delete this question?")) {
+          await deleteQuestion(q.id);
+          renderList();
+        }
+      });
+      list.appendChild(card);
+    });
+
+    document.getElementById("countInterview").textContent = `${counts["interview"] || 0} Interview`;
+    document.getElementById("countEasy").textContent = `${counts["coding-easy"] || 0} Easy`;
+    document.getElementById("countHard").textContent = `${counts["coding-hard"] || 0} Hard`;
+  }
+</script>
+
+</body>
+</html>

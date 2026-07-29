@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Create Account — Mah'a Gnan</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="page-center">
+  <div class="card card-auth">
+    <div class="brand-header">
+      <img src="assets/logo.png" alt="Mah'a Gnan" />
+      <h1>Create Account</h1>
+      <div class="tagline">Learn &bull; Grow &bull; Innovate</div>
+    </div>
+
+    <form id="signupForm">
+      <label for="name">Full Name</label>
+      <input type="text" id="name" required placeholder="As per your ID" />
+
+      <label for="email">Email</label>
+      <input type="email" id="email" required placeholder="you@example.com" />
+
+      <label for="password">Password</label>
+      <input type="password" id="password" required minlength="6" placeholder="At least 6 characters" />
+
+      <label>Reference Photo <span class="small-note">(clear, front-facing — used for face verification before every exam)</span></label>
+      <div class="text-center" style="border:1px dashed var(--gray-line); border-radius:8px; padding:14px; margin-top:6px;">
+        <video id="cam" autoplay muted playsinline style="width:100%; max-width:260px; border-radius:6px; background:#000;"></video>
+        <canvas id="snapCanvas" class="hidden"></canvas>
+        <div class="mt-16 flex gap-8" style="justify-content:center;">
+          <button type="button" class="btn btn-outline btn-sm" id="captureBtn">Capture Photo</button>
+        </div>
+        <img id="preview" class="hidden mt-16" style="max-width:140px; border-radius:6px;" />
+      </div>
+
+      <div class="error-text" id="errorMsg"></div>
+
+      <button type="submit" class="btn btn-primary" id="signupBtn">Create Account</button>
+    </form>
+
+    <div class="form-footer">
+      Already have an account? <a href="student-login.html">Log in</a>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { signupStudent } from "./js/auth.js";
+
+  const video = document.getElementById("cam");
+  const canvas = document.getElementById("snapCanvas");
+  const preview = document.getElementById("preview");
+  const captureBtn = document.getElementById("captureBtn");
+  let capturedBlob = null;
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+    } catch (err) {
+      console.error("Camera error:", err);
+      if (!navigator.mediaDevices) {
+        document.getElementById("errorMsg").textContent =
+          "Camera API unavailable. This page must be opened via http://localhost or https:// (not a raw IP or file://).";
+      } else {
+        document.getElementById("errorMsg").textContent = "Camera error: " + err.name + " — " + err.message;
+      }
+    }
+  }
+  startCamera();
+
+  captureBtn.addEventListener("click", () => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      capturedBlob = blob;
+      preview.src = URL.createObjectURL(blob);
+      preview.classList.remove("hidden");
+    }, "image/jpeg", 0.9);
+  });
+
+  const form = document.getElementById("signupForm");
+  const errorMsg = document.getElementById("errorMsg");
+  const signupBtn = document.getElementById("signupBtn");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorMsg.textContent = "";
+
+    if (!capturedBlob) {
+      errorMsg.textContent = "Please capture a reference photo before continuing.";
+      return;
+    }
+
+    signupBtn.disabled = true;
+    signupBtn.textContent = "Creating account...";
+
+    const name = document.getElementById("name").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      await signupStudent({ name, email, password, referencePhotoFile: capturedBlob });
+      window.location.href = "student-login.html";
+    } catch (err) {
+      errorMsg.textContent = err.message || "Signup failed. Try a different email.";
+      signupBtn.disabled = false;
+      signupBtn.textContent = "Create Account";
+    }
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Results — Mah'a Gnan</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <img src="assets/logo.png" alt="" />
+    <span>Mah'a <em>Gnan</em></span>
+  </div>
+  <div class="flex gap-16" style="align-items:center;">
+    <a href="index.html">Home</a>
+    <button class="btn btn-outline btn-sm hidden" id="logoutBtn">Log Out</button>
+  </div>
+</div>
+
+<!-- Login gate -->
+<div class="page-center hidden" id="loginGate">
+  <div class="card card-auth">
+    <div class="brand-header">
+      <img src="assets/logo.png" alt="Mah'a Gnan" />
+      <h1>My Results</h1>
+      <div class="tagline">Log in to view your graded results</div>
+    </div>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input type="email" id="email" required />
+      <label for="password">Password</label>
+      <input type="password" id="password" required />
+      <div class="error-text" id="errorMsg"></div>
+      <button type="submit" class="btn btn-primary">Log In</button>
+    </form>
+  </div>
+</div>
+
+<!-- Results view -->
+<div class="container hidden" id="resultsView" style="max-width:760px;">
+  <h2 id="studentNameHeading"></h2>
+  <div id="resultsBody"></div>
+</div>
+
+<div class="page-center" id="loadingArea">
+  <div class="loader"></div>
+</div>
+
+<script type="module">
+  import { auth, db } from "./js/firebase-config.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { doc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { loginUser } from "./js/auth.js";
+  import { normalizeQuestion } from "./js/format.js";
+
+  const loginGate = document.getElementById("loginGate");
+  const resultsView = document.getElementById("resultsView");
+  const loadingArea = document.getElementById("loadingArea");
+  const logoutBtn = document.getElementById("logoutBtn");
+
+  onAuthStateChanged(auth, async (user) => {
+    loadingArea.classList.add("hidden");
+    if (!user) {
+      loginGate.classList.remove("hidden");
+      resultsView.classList.add("hidden");
+      logoutBtn.classList.add("hidden");
+      return;
+    }
+    loginGate.classList.add("hidden");
+    logoutBtn.classList.remove("hidden");
+    await loadResults(user.uid);
+  });
+
+  document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorMsg = document.getElementById("errorMsg");
+    errorMsg.textContent = "";
+    try {
+      await loginUser(document.getElementById("email").value.trim(), document.getElementById("password").value);
+    } catch (err) {
+      errorMsg.textContent = "Login failed. Check your email and password.";
+    }
+  });
+
+  logoutBtn.addEventListener("click", async () => {
+    const { logoutUser } = await import("./js/auth.js");
+    await logoutUser();
+    window.location.reload();
+  });
+
+  async function loadResults(uid) {
+    resultsView.classList.remove("hidden");
+    const body = document.getElementById("resultsBody");
+    body.innerHTML = `<div class="loader"></div>`;
+
+    const publishSnap = await getDoc(doc(db, "settings", "resultsPublished"));
+    const published = publishSnap.exists() ? !!publishSnap.data().value : false;
+
+    const subSnap = await getDoc(doc(db, "submissions", uid));
+    if (!subSnap.exists()) {
+      body.innerHTML = `<div class="card text-center"><p>You haven't submitted an exam yet.</p></div>`;
+      return;
+    }
+    const sub = subSnap.data();
+    document.getElementById("studentNameHeading").textContent = sub.studentName ? `${sub.studentName}'s Results` : "My Results";
+
+    if (!published) {
+      body.innerHTML = `
+        <div class="card text-center">
+          <span class="badge badge-amber">Pending</span>
+          <p class="mt-16">Your exam was ${sub.status === "submitted" ? "submitted successfully" : "auto-submitted"}. Results have not been published yet — check back later.</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (!sub.grades) {
+      body.innerHTML = `
+        <div class="card text-center">
+          <span class="badge badge-amber">Not Graded Yet</span>
+          <p class="mt-16">Your submission hasn't been graded yet.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const qSnap = await getDocs(collection(db, "questions"));
+    const questions = qSnap.docs.map(d => normalizeQuestion({ id: d.id, ...d.data() }));
+
+    let totalAchieved = 0;
+    const totalPossible = questions.length * 10;
+
+    const rows = questions.map((q, idx) => {
+      const grade = sub.grades[q.id];
+      if (!grade) return "";
+      totalAchieved += Number(grade.marks) || 0;
+      const badgeClass = q.category === "interview" ? "badge-green" : "badge-amber";
+      return `
+        <div class="card mt-16">
+          <div class="flex-between">
+            <span class="badge ${badgeClass}">Q${idx + 1} &middot; ${q.category === "interview" ? "Interview" : "Coding"} &middot; ${q.label}</span>
+            <span class="badge badge-black">${grade.marks} / 10</span>
+          </div>
+          ${grade.remarks ? `<p class="mt-16" style="color:var(--ink);"><strong>Remarks:</strong> ${grade.remarks}</p>` : ""}
+        </div>
+      `;
+    }).join("");
+
+    body.innerHTML = `
+      <div class="card text-center" style="background:var(--black); border:none;">
+        <div class="small-note" style="color:var(--green-bright); text-transform:uppercase; letter-spacing:0.08em;">Total Score</div>
+        <div style="font-family:var(--font-display); font-size:2.4rem; font-weight:700; color:var(--white);">${totalAchieved} / ${totalPossible}</div>
+      </div>
+      ${rows}
+    `;
+  }
+</script>
+
+</body>
+</html>

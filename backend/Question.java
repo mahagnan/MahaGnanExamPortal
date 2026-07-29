@@ -1,0 +1,100 @@
+package com.mahagnan.model;
+
+public class Question {
+
+    private String id;
+    private String category;
+    private String label;
+    private String title;
+    private String description;
+    private int marks;
+    private boolean codingQuestion;
+    private String language;
+
+    public Question() {
+    }
+
+    public Question(String id,
+                    String category,
+                    String label,
+                    String title,
+                    String description,
+                    int marks,
+                    boolean codingQuestion,
+                    String language) {
+
+        this.id = id;
+        this.category = category;
+        this.label = label;
+        this.title = title;
+        this.description = description;
+        this.marks = marks;
+        this.codingQuestion = codingQuestion;
+        this.language = language;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
+    public String getLabel() {
+        return label;
+    }
+
+    public void setLabel(String label) {
+        this.label = label;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public int getMarks() {
+        return marks;
+    }
+
+    public void setMarks(int marks) {
+        this.marks = marks;
+    }
+
+    public boolean isCodingQuestion() {
+        return codingQuestion;
+    }
+
+    public void setCodingQuestion(boolean codingQuestion) {
+        this.codingQuestion = codingQuestion;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = language;
+    }
+
+}

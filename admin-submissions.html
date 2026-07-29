@@ -25,6 +25,9 @@
   <p class="small-note">Select a student to view answers, grade manually, and review proctoring snapshots.</p>
 
   <div class="card mt-24" style="padding:0; overflow:hidden;">
+    <div style="padding:16px;">
+      <input type="text" id="searchBox" placeholder="Search by student name or email..." />
+    </div>
     <table>
       <thead>
         <tr><th>Student</th><th>Status</th><th>Warnings</th><th>Snapshots</th><th></th></tr>
@@ -41,6 +44,7 @@
   import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { isAdmin, logoutUser } from "./js/auth.js";
   import { getAllSubmissions, getAllQuestions, saveGrade, clearViolationImages, deleteSubmission } from "./js/admin.js";
+  import { normalizeQuestion } from "./js/format.js";
 
   let submissions = [];
   let questions = [];
@@ -50,9 +54,22 @@
       window.location.href = "admin-login.html";
       return;
     }
-    questions = await getAllQuestions();
+    questions = (await getAllQuestions()).map(normalizeQuestion);
     await loadSubmissions();
   });
+
+  document.getElementById("searchBox").addEventListener("input", (e) => {
+    renderTable(filterSubs(e.target.value));
+  });
+
+  function filterSubs(term) {
+    const t = term.trim().toLowerCase();
+    if (!t) return submissions;
+    return submissions.filter(s =>
+      (s.studentName || "").toLowerCase().includes(t) ||
+      (s.studentEmail || "").toLowerCase().includes(t)
+    );
+  }
 
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     await logoutUser();
@@ -61,10 +78,14 @@
 
   async function loadSubmissions() {
     submissions = await getAllSubmissions();
+    renderTable(submissions);
+  }
+
+  function renderTable(list) {
     const body = document.getElementById("subTableBody");
     body.innerHTML = "";
 
-    submissions.forEach(sub => {
+    list.forEach(sub => {
       const row = document.createElement("tr");
       const statusBadge = sub.status === "submitted" ? "badge-green" : sub.status === "auto-submitted" ? "badge-red" : "badge-amber";
       row.innerHTML = `
@@ -88,11 +109,15 @@
 
     const answersHtml = questions.map(q => {
       const answerText = (sub.answers && sub.answers[q.id]) || "(no answer)";
+      const answerLang = sub.answerLanguages && sub.answerLanguages[q.id];
       const existingGrade = (sub.grades && sub.grades[q.id]) || { marks: "", remarks: "" };
-      const badgeClass = q.type === "interview" ? "badge-green" : q.type === "coding-easy" ? "badge-amber" : "badge-red";
+      const badgeClass = q.category === "interview" ? "badge-green" : "badge-amber";
       return `
         <div class="card mt-16">
-          <span class="badge ${badgeClass}">${q.type}</span>
+          <div class="flex gap-8" style="align-items:center;">
+            <span class="badge ${badgeClass}">${q.category === "interview" ? "Interview" : "Coding"} &middot; ${q.label}</span>
+            ${answerLang ? `<span class="badge badge-black">${answerLang}</span>` : ""}
+          </div>
           <p style="color:var(--ink); font-weight:600; margin-top:10px;">${q.text}</p>
           <div class="circuit-divider" style="margin:10px 0;"><span class="node"></span></div>
           <pre style="white-space:pre-wrap; font-family:inherit; background:var(--bg-soft); padding:12px; border-radius:6px;">${answerText}</pre>
@@ -110,6 +135,9 @@
       `;
     }).join("");
 
+    const totalAchieved = questions.reduce((sum, q) => sum + (Number((sub.grades && sub.grades[q.id]?.marks)) || 0), 0);
+    const totalPossible = questions.length * 10;
+
     const imagesHtml = (sub.violationImages || []).map(url => `
       <img src="${url}" style="width:110px; height:80px; object-fit:cover; border-radius:6px; border:1px solid var(--gray-line);" />
     `).join("");
@@ -120,6 +148,7 @@
         <h3>${sub.studentName} — Answers &amp; Grading</h3>
         <button class="btn btn-danger btn-sm" id="deleteSubBtn">Delete This Submission</button>
       </div>
+      <div class="badge badge-black" style="font-size:0.85rem; padding:6px 14px;">Total: ${totalAchieved} / ${totalPossible}</div>
       ${hasAnswersButNoMatch ? `
         <div class="card mt-16" style="border-color:var(--red-alert); background:var(--red-pale);">
           <p style="color:var(--red-alert); margin:0;"><strong>This submission's answers don't match any current question.</strong>
@@ -156,9 +185,13 @@
       for (const input of marksInputs) {
         const qid = input.dataset.qid;
         const remarksInput = panel.querySelector(`.remarksInput[data-qid="${qid}"]`);
-        await saveGrade(sub.id, qid, Number(input.value) || 0, remarksInput.value);
+        const marksVal = Number(input.value) || 0;
+        await saveGrade(sub.id, qid, marksVal, remarksInput.value);
+        sub.grades = sub.grades || {};
+        sub.grades[qid] = { marks: marksVal, remarks: remarksInput.value };
       }
       alert("Grades saved.");
+      showDetail(sub);
     });
 
     panel.querySelector("#clearImagesBtn").addEventListener("click", async () => {

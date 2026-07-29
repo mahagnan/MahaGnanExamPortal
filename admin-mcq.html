@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MCQ Questions — Mah'a Gnan Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <img src="assets/logo.png" alt="" />
+    <span>Mah'a <em>Gnan</em> Admin</span>
+  </div>
+  <div class="flex gap-16" style="align-items:center;">
+    <a href="admin-dashboard.html">Question Bank</a>
+    <a href="admin-submissions.html">Submissions &amp; Grading</a>
+    <a href="admin-mcq.html"><strong>MCQ Questions</strong></a>
+    <a href="admin-mcq-results.html">MCQ Results</a>
+    <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
+  </div>
+</div>
+
+<div class="container">
+  <h2>MCQ Test — Hiring / Selection Screening</h2>
+  <p class="small-note">A separate, fully proctored test. Each question needs exactly one correct answer and 3 wrong options. Order and options are shuffled per student, and results are shown to the student instantly after submission — no manual grading needed.</p>
+
+  <div class="card mt-24">
+    <div class="flex-between" style="flex-wrap:wrap; gap:16px;">
+      <div>
+        <label for="durationInput" style="margin-top:0;">Exam Duration (minutes)</label>
+        <input type="number" id="durationInput" min="1" style="max-width:140px;" />
+      </div>
+      <button class="btn btn-outline btn-sm" id="saveDurationBtn" style="align-self:flex-end;">Save Duration</button>
+    </div>
+  </div>
+
+  <div class="card mt-24">
+    <h3 id="formTitle">Add MCQ Question</h3>
+    <label for="mcqText">Question</label>
+    <textarea id="mcqText" placeholder="Type the question here..."></textarea>
+
+    <label class="mt-16">Options — mark the correct one</label>
+    <div id="optionsArea"></div>
+
+    <div class="error-text" id="errorMsg"></div>
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-primary" id="saveBtn">Add Question</button>
+      <button class="btn btn-outline hidden" id="cancelEditBtn">Cancel Edit</button>
+    </div>
+  </div>
+
+  <div class="circuit-divider"><span class="node"></span></div>
+
+  <div class="flex-between mt-16">
+    <h3>Posted MCQ Questions</h3>
+    <span class="badge badge-green" id="countMcq">0 Questions</span>
+  </div>
+
+  <div id="mcqList"></div>
+</div>
+
+<script type="module">
+  import { auth } from "./js/firebase-config.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { isAdmin, logoutUser } from "./js/auth.js";
+  import {
+    addMcqQuestion, getAllMcqQuestions, updateMcqQuestion, deleteMcqQuestion,
+    getMcqDurationMinutes, setMcqDurationMinutes
+  } from "./js/mcq.js";
+  import { formatQuestionText } from "./js/format.js";
+
+  let editingId = null;
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user || !(await isAdmin(user.uid))) {
+      window.location.href = "admin-login.html";
+      return;
+    }
+    document.getElementById("durationInput").value = await getMcqDurationMinutes();
+    renderList();
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await logoutUser();
+    window.location.href = "admin-login.html";
+  });
+
+  document.getElementById("saveDurationBtn").addEventListener("click", async () => {
+    const val = document.getElementById("durationInput").value;
+    if (!val || val < 1) return;
+    await setMcqDurationMinutes(val);
+    alert("Duration saved.");
+  });
+
+  function renderOptionInputs(options = ["", "", "", ""], correctIndex = 0) {
+    const area = document.getElementById("optionsArea");
+    area.innerHTML = options.map((opt, i) => `
+      <div class="flex gap-8" style="align-items:center; margin-top:8px;">
+        <input type="radio" name="correctOpt" value="${i}" ${i === correctIndex ? "checked" : ""} style="width:auto;" />
+        <input type="text" class="optionInput" data-idx="${i}" value="${opt}" placeholder="Option ${i + 1}" style="flex:1;" />
+      </div>
+    `).join("");
+  }
+  renderOptionInputs();
+
+  function resetForm() {
+    editingId = null;
+    document.getElementById("formTitle").textContent = "Add MCQ Question";
+    document.getElementById("saveBtn").textContent = "Add Question";
+    document.getElementById("cancelEditBtn").classList.add("hidden");
+    document.getElementById("mcqText").value = "";
+    renderOptionInputs();
+  }
+
+  document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
+
+  document.getElementById("saveBtn").addEventListener("click", async () => {
+    const errorMsg = document.getElementById("errorMsg");
+    errorMsg.textContent = "";
+
+    const text = document.getElementById("mcqText").value.trim();
+    const optionInputs = [...document.querySelectorAll(".optionInput")];
+    const options = optionInputs.map(i => i.value.trim());
+    const correctRadio = document.querySelector('input[name="correctOpt"]:checked');
+
+    if (!text) { errorMsg.textContent = "Please enter the question text."; return; }
+    if (options.some(o => !o)) { errorMsg.textContent = "Please fill in all 4 options."; return; }
+    if (!correctRadio) { errorMsg.textContent = "Please mark which option is correct."; return; }
+
+    const correctIndex = Number(correctRadio.value);
+
+    if (editingId) {
+      await updateMcqQuestion(editingId, { text, options, correctIndex });
+    } else {
+      await addMcqQuestion({ text, options, correctIndex });
+    }
+    resetForm();
+    renderList();
+  });
+
+  async function renderList() {
+    const questions = await getAllMcqQuestions();
+    const list = document.getElementById("mcqList");
+    list.innerHTML = "";
+    document.getElementById("countMcq").textContent = `${questions.length} Questions`;
+
+    questions.forEach((q, idx) => {
+      const card = document.createElement("div");
+      card.className = "card mt-16";
+      card.innerHTML = `
+        <div class="flex-between">
+          <span class="badge badge-green">Q${idx + 1}</span>
+          <div class="flex gap-8">
+            <button class="btn btn-outline btn-sm editBtn">Edit</button>
+            <button class="btn btn-outline btn-sm delBtn">Delete</button>
+          </div>
+        </div>
+        <p class="question-list-text">${formatQuestionText(q.text)}</p>
+        <div class="mt-16">
+          ${q.options.map((opt, i) => `
+            <div style="padding:6px 10px; border-radius:6px; margin-bottom:4px; ${i === q.correctIndex ? "background:var(--green-pale); color:var(--green-deep); font-weight:600;" : "color:var(--gray-text);"}">
+              ${i === q.correctIndex ? "&#10003; " : ""}${opt}
+            </div>
+          `).join("")}
+        </div>
+      `;
+      card.querySelector(".editBtn").addEventListener("click", () => {
+        editingId = q.id;
+        document.getElementById("formTitle").textContent = "Edit MCQ Question";
+        document.getElementById("saveBtn").textContent = "Save Changes";
+        document.getElementById("cancelEditBtn").classList.remove("hidden");
+        document.getElementById("mcqText").value = q.text;
+        renderOptionInputs(q.options, q.correctIndex);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+      card.querySelector(".delBtn").addEventListener("click", async () => {
+        if (confirm("Delete this MCQ question?")) {
+          await deleteMcqQuestion(q.id);
+          renderList();
+        }
+      });
+      list.appendChild(card);
+    });
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MCQ Test In Progress — Mah'a Gnan</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+</head>
+<body>
+
+<div class="exam-header">
+  <div class="flex gap-16" style="align-items:center;">
+    <img src="assets/logo.png" alt="" style="height:28px; border-radius:50%;" />
+    <strong>Mah'a Gnan MCQ Test</strong>
+  </div>
+  <div class="flex gap-16" style="align-items:center;">
+    <div class="strikes">
+      <span class="strike-dot"></span>
+      <span class="strike-dot"></span>
+      <span class="strike-dot"></span>
+    </div>
+    <div class="timer" id="timer">00:30:00</div>
+  </div>
+</div>
+
+<div class="container" style="max-width:820px;">
+  <p class="small-note">Stay in fullscreen for the entire test. Switching tabs or exiting fullscreen counts as a warning — 3 warnings auto-submits your test. You'll see your score immediately after submitting.</p>
+  <div id="questionsContainer"></div>
+
+  <div class="text-center mt-24" style="margin-bottom:60px;">
+    <button class="btn btn-black" id="submitBtn">Submit Test</button>
+  </div>
+</div>
+
+<div class="cam-monitor" id="camMonitor">
+  <div class="cam-label">MONITORING ACTIVE</div>
+</div>
+
+<div class="alert-overlay" id="alertOverlay">
+  <div class="alert-box">
+    <h2>&#9888; Warning</h2>
+    <p id="alertMessage"></p>
+  </div>
+</div>
+
+<script type="module">
+  import { initMcqExam, manualSubmit } from "./js/mcq-exam.js";
+  initMcqExam();
+  document.getElementById("submitBtn").addEventListener("click", manualSubmit);
+</script>
+
+</body>
+</html>

@@ -96,15 +96,24 @@
     const body = document.getElementById("resultsBody");
     body.innerHTML = `<div class="loader"></div>`;
 
-    const publishSnap = await getDoc(doc(db, "settings", "resultsPublished"));
-    const published = publishSnap.exists() ? !!publishSnap.data().value : false;
+    let published = false;
+    let sub = null;
 
-    const subSnap = await getDoc(doc(db, "submissions", uid));
-    if (!subSnap.exists()) {
-      body.innerHTML = `<div class="card text-center"><p>You haven't submitted an exam yet.</p></div>`;
+    try {
+      const publishSnap = await getDoc(doc(db, "settings", "resultsPublished"));
+      published = publishSnap.exists() ? !!publishSnap.data().value : false;
+
+      const subSnap = await getDoc(doc(db, "submissions", uid));
+      if (!subSnap.exists()) {
+        body.innerHTML = `<div class="card text-center"><p>You haven't submitted an exam yet.</p></div>`;
+        return;
+      }
+      sub = subSnap.data();
+    } catch (err) {
+      console.error("Error loading results:", err);
+      body.innerHTML = `<div class="card text-center"><p style="color:var(--red-alert);">Could not load results: ${err.message}</p></div>`;
       return;
     }
-    const sub = subSnap.data();
     document.getElementById("studentNameHeading").textContent = sub.studentName ? `${sub.studentName}'s Results` : "My Results";
 
     if (!published) {

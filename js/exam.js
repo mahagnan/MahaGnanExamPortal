@@ -15,7 +15,7 @@ import {
 import { getStudentProfile } from "./auth.js";
 import { buildSessionFolder, uploadSnapshot, captureFrameAsBlob } from "./cloudinary.js";
 import { loadFaceModels, monitorFrame } from "./face-detection.js";
-import { formatQuestionText } from "./format.js";
+import { formatQuestionText, normalizeQuestion } from "./format.js";
 
 const EXAM_DURATION_SECONDS = 2 * 60 * 60; // 2 hours
 const MAX_STRIKES = 3;
@@ -95,42 +95,79 @@ function shuffle(arr) {
 
 async function loadQuestionsShuffled() {
   const snap = await getDocs(collection(db, "questions"));
-  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const interview = shuffle(all.filter(q => q.type === "interview"));
-  const easy = shuffle(all.filter(q => q.type === "coding-easy"));
-  const hard = shuffle(all.filter(q => q.type === "coding-hard"));
-  questions = [...interview, ...easy, ...hard]; // grouped but jumbled within each group, unique order per student
+  const all = snap.docs.map(d => normalizeQuestion({ id: d.id, ...d.data() }));
+  const interview = shuffle(all.filter(q => q.category === "interview"));
+  const coding = shuffle(all.filter(q => q.category === "coding"));
+  questions = [...interview, ...coding]; // grouped but jumbled within each group, unique order per student
 }
+
+const LANGUAGE_MODES = {
+  html: "htmlmixed",
+  css: "css",
+  javascript: "javascript",
+  java: "text/x-java",
+  mysql: "text/x-sql",
+  python: "text/x-python"
+};
+
+const codeEditors = {}; // qid -> CodeMirror instance
 
 function renderQuestions() {
   els.questionsContainer.innerHTML = "";
   questions.forEach((q, idx) => {
     const card = document.createElement("div");
     card.className = "question-card";
-    const isCoding = q.type === "coding-easy" || q.type === "coding-hard";
+    const isCoding = q.category === "coding";
 
     card.innerHTML = `
       <div class="q-meta">
         <span class="q-number">Q${idx + 1}</span>
-        <span class="badge ${isCoding ? (q.type === "coding-hard" ? "badge-red" : "badge-amber") : "badge-green"}">
-          ${q.type === "interview" ? "Interview" : q.type === "coding-easy" ? "Coding · Easy" : "Coding · Hard"}
+        <span class="badge ${isCoding ? "badge-amber" : "badge-green"}">
+          ${isCoding ? "Coding" : "Interview"} &middot; ${q.label}
         </span>
       </div>
       <div class="q-text">${formatQuestionText(q.text)}</div>
       ${isCoding ? `
         <select class="code-lang-select" data-qid="${q.id}">
+          <option value="html">HTML</option>
+          <option value="css">CSS</option>
+          <option value="javascript">JavaScript</option>
           <option value="java">Java</option>
+          <option value="mysql">MySQL</option>
           <option value="python">Python</option>
         </select>
-        <textarea class="code-area" data-qid="${q.id}" placeholder="Write your ${q.type === 'coding-hard' ? 'hard' : 'easy'} coding answer here..."></textarea>
+        <textarea class="code-area" data-qid="${q.id}"></textarea>
       ` : `
         <textarea data-qid="${q.id}" placeholder="Type your answer here..."></textarea>
       `}
     `;
     els.questionsContainer.appendChild(card);
+
+    if (isCoding) {
+      const textareaEl = card.querySelector(`textarea.code-area[data-qid="${q.id}"]`);
+      const langSelect = card.querySelector(`select[data-qid="${q.id}"]`);
+      const cm = CodeMirror.fromTextArea(textareaEl, {
+        lineNumbers: true,
+        theme: "material-darker",
+        mode: LANGUAGE_MODES[langSelect.value],
+        indentUnit: 2,
+        tabSize: 2,
+        viewportMargin: Infinity
+      });
+      codeEditors[q.id] = cm;
+
+      cm.on("change", debounce(() => {
+        saveAnswer(q.id, cm.getValue(), langSelect.value);
+      }, 800));
+
+      langSelect.addEventListener("change", () => {
+        cm.setOption("mode", LANGUAGE_MODES[langSelect.value]);
+        saveAnswer(q.id, cm.getValue(), langSelect.value);
+      });
+    }
   });
 
-  els.questionsContainer.querySelectorAll("textarea").forEach(ta => {
+  els.questionsContainer.querySelectorAll("textarea:not(.code-area)").forEach(ta => {
     ta.addEventListener("input", debounce(() => saveAnswer(ta.dataset.qid, ta.value), 800));
   });
 }
@@ -141,9 +178,11 @@ function debounce(fn, ms) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
-async function saveAnswer(questionId, text) {
+async function saveAnswer(questionId, text, language) {
   answers[questionId] = text;
-  await updateDoc(submissionRef, { [`answers.${questionId}`]: text, lastSavedAt: serverTimestamp() });
+  const update = { [`answers.${questionId}`]: text, lastSavedAt: serverTimestamp() };
+  if (language) update[`answerLanguages.${questionId}`] = language;
+  await updateDoc(submissionRef, update);
 }
 
 // ---------- Submission doc ----------

@@ -3,21 +3,32 @@
 // ============================================
 import { db } from "./firebase-config.js";
 import {
-  collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, where
+  collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, query, where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-export async function updateQuestion(id, { type, text }) {
-  await updateDoc(doc(db, "questions", id), { type, text });
+export async function updateQuestion(id, { category, label, text }) {
+  await updateDoc(doc(db, "questions", id), { category, label, text });
 }
 
 export async function deleteSubmission(studentId) {
   await deleteDoc(doc(db, "submissions", studentId));
 }
 
+// ---------- Global results-publish switch ----------
+
+export async function getResultsPublished() {
+  const snap = await getDoc(doc(db, "settings", "resultsPublished"));
+  return snap.exists() ? !!snap.data().value : false;
+}
+
+export async function setResultsPublished(value) {
+  await setDoc(doc(db, "settings", "resultsPublished"), { value, updatedAt: new Date().toISOString() });
+}
+
 // ---------- Questions ----------
 
-export async function addQuestion({ type, text }) {
-  await addDoc(collection(db, "questions"), { type, text, createdAt: new Date().toISOString() });
+export async function addQuestion({ category, label, text }) {
+  await addDoc(collection(db, "questions"), { category, label, text, createdAt: new Date().toISOString() });
 }
 
 export async function getAllQuestions() {

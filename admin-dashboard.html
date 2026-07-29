@@ -16,6 +16,8 @@
   </div>
   <div class="flex gap-16" style="align-items:center;">
     <a href="admin-submissions.html">Submissions &amp; Grading</a>
+    <a href="admin-mcq.html">MCQ Questions</a>
+    <a href="admin-mcq-results.html">MCQ Results</a>
     <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
   </div>
 </div>
@@ -105,16 +107,31 @@ Wrap text in **double asterisks** to make it bold."></textarea>
 
   async function renderPublishToggle() {
     const btn = document.getElementById("publishToggleBtn");
-    const published = await getResultsPublished();
-    btn.textContent = published ? "Published — Click to Hide" : "Hidden — Click to Publish";
-    btn.className = published ? "btn btn-sm btn-primary" : "btn btn-sm btn-outline";
-    btn.style.color = published ? "" : "var(--white)";
-    btn.style.borderColor = published ? "" : "var(--white)";
-    btn.onclick = async () => {
-      btn.disabled = true;
-      await setResultsPublished(!published);
-      await renderPublishToggle();
-    };
+    try {
+      const published = await getResultsPublished();
+      btn.textContent = published ? "Published — Click to Hide" : "Hidden — Click to Publish";
+      btn.className = published ? "btn btn-sm btn-primary" : "btn btn-sm btn-outline";
+      btn.style.color = published ? "" : "var(--white)";
+      btn.style.borderColor = published ? "" : "var(--white)";
+      btn.disabled = false;
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          await setResultsPublished(!published);
+          await renderPublishToggle();
+        } catch (err) {
+          console.error("Failed to update publish state:", err);
+          alert("Could not update results visibility: " + err.message + "\n\nCheck that your Firestore rules include a rule for the 'settings' collection (see README).");
+          btn.disabled = false;
+        }
+      };
+    } catch (err) {
+      console.error("Failed to load publish state:", err);
+      btn.textContent = "Error loading — check console";
+      btn.className = "btn btn-sm btn-outline";
+      btn.style.color = "var(--red-alert)";
+      btn.style.borderColor = "var(--red-alert)";
+    }
   }
 
   onAuthStateChanged(auth, async (user) => {

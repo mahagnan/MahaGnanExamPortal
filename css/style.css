@@ -251,9 +251,9 @@ textarea { resize: vertical; min-height: 90px; }
 
 .role-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
-  max-width: 640px;
+  max-width: 760px;
   margin-top: 28px;
 }
 @media (max-width: 560px) {
@@ -379,6 +379,14 @@ textarea.code-area {
   color: #d4f5d9;
   min-height: 220px;
   border: 1px solid var(--black);
+}
+
+.CodeMirror {
+  height: 240px;
+  border: 1.5px solid var(--green-mid);
+  border-radius: 8px;
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 0.88rem;
 }
 
 /* ---------- Alert overlay (violation warning) ---------- */

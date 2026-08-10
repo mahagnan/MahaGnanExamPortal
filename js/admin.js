@@ -3,7 +3,7 @@
 // ============================================
 import { db } from "./firebase-config.js";
 import {
-  collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, query, where
+  collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, query, where, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 export async function updateQuestion(id, { category, label, text }) {
@@ -38,6 +38,19 @@ export async function getAllQuestions() {
 
 export async function deleteQuestion(id) {
   await deleteDoc(doc(db, "questions", id));
+}
+
+/** Deletes every interview/coding question from the question bank. Returns the count deleted. */
+export async function deleteAllQuestions() {
+  const snap = await getDocs(collection(db, "questions"));
+  const docs = snap.docs;
+  const CHUNK = 450;
+  for (let i = 0; i < docs.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    docs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+  return docs.length;
 }
 
 // ---------- Submissions ----------

@@ -80,11 +80,12 @@ Wrap text in **double asterisks** to make it bold."></textarea>
 
   <div class="circuit-divider"><span class="node"></span></div>
 
-  <div class="flex-between mt-16">
+  <div class="flex-between mt-16" style="flex-wrap:wrap; gap:12px;">
     <h3>Posted Questions</h3>
-    <div class="flex gap-8">
+    <div class="flex gap-8" style="align-items:center;">
       <span class="badge badge-green" id="countInterview">0 Interview</span>
       <span class="badge badge-amber" id="countCoding">0 Coding</span>
+      <button class="btn btn-sm" id="deleteAllBtn" style="background:var(--red-alert); color:var(--white); border:none;">Delete All Questions</button>
     </div>
   </div>
 
@@ -95,7 +96,7 @@ Wrap text in **double asterisks** to make it bold."></textarea>
   import { auth } from "./js/firebase-config.js";
   import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { isAdmin, logoutUser } from "./js/auth.js";
-  import { addQuestion, getAllQuestions, deleteQuestion, getAllSubmissions, updateQuestion, getResultsPublished, setResultsPublished } from "./js/admin.js";
+  import { addQuestion, getAllQuestions, deleteQuestion, deleteAllQuestions, getAllSubmissions, updateQuestion, getResultsPublished, setResultsPublished } from "./js/admin.js";
   import { formatQuestionText, normalizeQuestion } from "./js/format.js";
 
   async function renderStats() {
@@ -165,6 +166,30 @@ Wrap text in **double asterisks** to make it bold."></textarea>
     document.getElementById("qText").value = "";
     document.getElementById("qLabel").value = "";
     renderList();
+  });
+
+  document.getElementById("deleteAllBtn").addEventListener("click", async () => {
+    const questions = await getAllQuestions();
+    if (questions.length === 0) { alert("There are no questions to delete."); return; }
+    const sure = confirm(`This will permanently delete all ${questions.length} questions (interview + coding). This cannot be undone. Continue?`);
+    if (!sure) return;
+    const typed = prompt(`Type DELETE to confirm removing all ${questions.length} questions.`);
+    if (typed !== "DELETE") { alert("Cancelled — nothing was deleted."); return; }
+
+    const btn = document.getElementById("deleteAllBtn");
+    btn.disabled = true;
+    btn.textContent = "Deleting...";
+    try {
+      const count = await deleteAllQuestions();
+      alert(`Deleted ${count} questions.`);
+      renderList();
+    } catch (err) {
+      console.error("Bulk delete failed:", err);
+      alert("Could not delete all questions: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Delete All Questions";
+    }
   });
 
   async function renderList() {

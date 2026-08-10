@@ -276,6 +276,50 @@ function computeScore() {
   return score;
 }
 
+/** Picks a tier of feedback (emoji, headline, note) based on score percentage. */
+function getPerformanceFeedback(score, total, name) {
+  const pct = total > 0 ? (score / total) * 100 : 0;
+  const who = name ? name : "there";
+  if (pct >= 90) {
+    return { emoji: "🏆", headline: `Outstanding, ${who}!`, note: "You're on absolute fire — this is top-tier performance. Keep it up!", color: "var(--green-deep)" };
+  }
+  if (pct >= 75) {
+    return { emoji: "🎯", headline: `Great job, ${who}!`, note: "Strong, solid performance. A little more polish and you'll be unstoppable.", color: "var(--green-mid)" };
+  }
+  if (pct >= 50) {
+    return { emoji: "💪", headline: `Good effort, ${who}!`, note: "You're on the right track. Revisit the questions you missed and practice a bit more.", color: "var(--amber)" };
+  }
+  if (pct >= 35) {
+    return { emoji: "📘", headline: `You can do better, ${who}.`, note: "This isn't your best — go back over the topics below and give it another focused round.", color: "var(--amber)" };
+  }
+  return { emoji: "🔄", headline: `Don't worry, ${who}.`, note: "Every attempt is practice. Review the mistakes below closely, then try again — you've got this.", color: "var(--red-alert)" };
+}
+
+/** Builds the review list of every question, calling out mistakes with the correct answer shown. */
+function buildReviewHtml() {
+  return questions.map((q, idx) => {
+    const selected = selectedAnswers[q.id];
+    const wasAnswered = selected !== undefined;
+    const isCorrect = selected === q.correctIndex;
+    const correctText = q.options[q.correctIndex];
+    const yourText = wasAnswered ? q.options[selected] : null;
+
+    return `
+      <div class="card mt-16" style="text-align:left; ${isCorrect ? "" : "border-color:var(--red-alert);"}">
+        <div class="flex-between">
+          <span class="badge badge-green">Q${idx + 1}</span>
+          <span class="badge ${isCorrect ? "badge-green" : "badge-red"}">${isCorrect ? "Correct" : wasAnswered ? "Incorrect" : "Not Answered"}</span>
+        </div>
+        <p class="question-list-text mt-16">${formatQuestionText(q.text)}</p>
+        ${!isCorrect ? `
+          ${wasAnswered ? `<p style="color:var(--red-alert); margin:6px 0;"><strong>Your answer:</strong> ${yourText}</p>` : `<p style="color:var(--red-alert); margin:6px 0;"><strong>Your answer:</strong> Skipped</p>`}
+          <p style="color:var(--green-deep); margin:6px 0;"><strong>Correct answer:</strong> ${correctText}</p>
+        ` : `<p style="color:var(--green-deep); margin:6px 0;"><strong>Your answer:</strong> ${yourText} &#10003;</p>`}
+      </div>
+    `;
+  }).join("");
+}
+
 async function finalizeSubmit(reasonCode) {
   if (examEnded) return;
   examEnded = true;
@@ -296,21 +340,38 @@ async function finalizeSubmit(reasonCode) {
 
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 
+  const total = questions.length;
+  const feedback = getPerformanceFeedback(score, total, profile?.name);
+  const mistakeCount = questions.filter(q => selectedAnswers[q.id] !== q.correctIndex).length;
+
   document.body.innerHTML = `
-    <div class="page-center">
-      <div class="card text-center" style="max-width:420px;">
-        <div class="badge badge-black" style="font-size:0.9rem; padding:8px 18px; margin-bottom:14px; display:inline-block;">Instant Result</div>
-        <h2>Your Score</h2>
-        <div style="font-family:var(--font-display); font-size:2.6rem; font-weight:700; color:var(--green-deep);">${score} / ${questions.length}</div>
-        <p class="mt-16 small-note">${
+    <div class="container" style="max-width:720px; padding-top:40px; padding-bottom:60px;">
+      <div class="card text-center" style="background:var(--black); border:none;">
+        <div class="badge badge-black" style="font-size:0.9rem; padding:8px 18px; margin-bottom:14px; display:inline-block; background:rgba(255,255,255,0.12); color:var(--white);">Instant Result</div>
+        <div style="font-size:2.4rem; line-height:1;">${feedback.emoji}</div>
+        <h2 style="color:var(--white); margin-top:10px;">${feedback.headline}</h2>
+        <div style="font-family:var(--font-display); font-size:2.6rem; font-weight:700; color:var(--green-bright); margin-top:6px;">${score} / ${total}</div>
+        <p class="mt-16" style="color:rgba(255,255,255,0.85);">${feedback.note}</p>
+        <p class="small-note" style="color:rgba(255,255,255,0.6);">${
           reasonCode === "violations"
             ? "Your test was automatically submitted after 3 warnings."
             : reasonCode === "time-up"
             ? "Time's up — your test was automatically submitted."
             : "Submitted successfully."
         }</p>
-        <p class="small-note">You may close this window.</p>
       </div>
+
+      <div class="circuit-divider"><span class="node"></span></div>
+
+      <div class="flex-between">
+        <h3 style="margin:0;">Answer Review</h3>
+        <span class="badge ${mistakeCount === 0 ? "badge-green" : "badge-red"}">${mistakeCount === 0 ? "No mistakes — perfect!" : `${mistakeCount} mistake${mistakeCount === 1 ? "" : "s"}`}</span>
+      </div>
+      <p class="small-note">Your answer and the correct answer for every question, so you know exactly what to brush up on.</p>
+
+      ${buildReviewHtml()}
+
+      <p class="small-note text-center mt-24">You may close this window.</p>
     </div>
   `;
 }

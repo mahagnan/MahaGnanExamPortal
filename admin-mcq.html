@@ -38,6 +38,21 @@
   </div>
 
   <div class="card mt-24">
+    <div class="flex-between" style="flex-wrap:wrap; gap:16px; align-items:flex-start;">
+      <div>
+        <h3 style="margin-top:0;">Bulk Upload from CSV</h3>
+        <p class="small-note">Columns: <code>question, option1, option2, option3, option4, correct</code>. The <code>correct</code> column can be <code>1-4</code>, <code>A-D</code>, or the exact option text. First row can be a header or straight data.</p>
+        <input type="file" id="csvInput" accept=".csv,text/csv" />
+      </div>
+      <div class="flex" style="flex-direction:column; gap:8px; align-items:flex-end;">
+        <button class="btn btn-primary btn-sm" id="csvUploadBtn">Upload &amp; Add Questions</button>
+        <a href="#" id="csvSampleLink" class="small-note">Download sample CSV</a>
+      </div>
+    </div>
+    <div id="csvResultMsg" class="mt-16"></div>
+  </div>
+
+  <div class="card mt-24">
     <h3 id="formTitle">Add MCQ Question</h3>
     <label for="mcqText">Question</label>
     <textarea id="mcqText" placeholder="Type the question here..."></textarea>
@@ -54,9 +69,12 @@
 
   <div class="circuit-divider"><span class="node"></span></div>
 
-  <div class="flex-between mt-16">
+  <div class="flex-between mt-16" style="flex-wrap:wrap; gap:12px;">
     <h3>Posted MCQ Questions</h3>
-    <span class="badge badge-green" id="countMcq">0 Questions</span>
+    <div class="flex gap-8" style="align-items:center;">
+      <span class="badge badge-green" id="countMcq">0 Questions</span>
+      <button class="btn btn-sm" id="deleteAllBtn" style="background:var(--red-alert); color:var(--white); border:none;">Delete All Questions</button>
+    </div>
   </div>
 
   <div id="mcqList"></div>
@@ -68,9 +86,11 @@
   import { isAdmin, logoutUser } from "./js/auth.js";
   import {
     addMcqQuestion, getAllMcqQuestions, updateMcqQuestion, deleteMcqQuestion,
+    deleteAllMcqQuestions, bulkAddMcqQuestions,
     getMcqDurationMinutes, setMcqDurationMinutes
   } from "./js/mcq.js";
   import { formatQuestionText } from "./js/format.js";
+  import { parseMcqCsv } from "./js/csv-utils.js";
 
   let editingId = null;
 
@@ -93,6 +113,93 @@
     if (!val || val < 1) return;
     await setMcqDurationMinutes(val);
     alert("Duration saved.");
+  });
+
+  // ---------- Delete all questions ----------
+  document.getElementById("deleteAllBtn").addEventListener("click", async () => {
+    const questions = await getAllMcqQuestions();
+    if (questions.length === 0) { alert("There are no MCQ questions to delete."); return; }
+    const sure = confirm(`This will permanently delete all ${questions.length} MCQ questions. This cannot be undone. Continue?`);
+    if (!sure) return;
+    const typed = prompt(`Type DELETE to confirm removing all ${questions.length} questions.`);
+    if (typed !== "DELETE") { alert("Cancelled — nothing was deleted."); return; }
+
+    const btn = document.getElementById("deleteAllBtn");
+    btn.disabled = true;
+    btn.textContent = "Deleting...";
+    try {
+      const count = await deleteAllMcqQuestions();
+      alert(`Deleted ${count} MCQ questions.`);
+      resetForm();
+      renderList();
+    } catch (err) {
+      console.error("Bulk delete failed:", err);
+      alert("Could not delete all questions: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Delete All Questions";
+    }
+  });
+
+  // ---------- Sample CSV download ----------
+  document.getElementById("csvSampleLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    const sample = [
+      "question,option1,option2,option3,option4,correct",
+      '"What is the capital of France?",Paris,London,Berlin,Rome,1',
+      '"Which data structure uses FIFO order?",Stack,Queue,Tree,Graph,B'
+    ].join("\n");
+    const blob = new Blob([sample], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "mcq-sample.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // ---------- CSV bulk upload ----------
+  document.getElementById("csvUploadBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("csvInput");
+    const resultMsg = document.getElementById("csvResultMsg");
+    resultMsg.innerHTML = "";
+
+    const file = fileInput.files[0];
+    if (!file) { resultMsg.innerHTML = `<p class="error-text">Please choose a CSV file first.</p>`; return; }
+
+    const btn = document.getElementById("csvUploadBtn");
+    btn.disabled = true;
+    btn.textContent = "Uploading...";
+
+    try {
+      const rawText = await file.text();
+      const { questions, errors } = parseMcqCsv(rawText);
+
+      if (questions.length > 0) {
+        await bulkAddMcqQuestions(questions);
+      }
+
+      let html = "";
+      if (questions.length > 0) {
+        html += `<p style="color:var(--green-deep); font-weight:600;">&#10003; Added ${questions.length} question${questions.length === 1 ? "" : "s"} from the CSV.</p>`;
+      }
+      if (errors.length > 0) {
+        html += `<p class="error-text" style="margin-top:8px;">${errors.length} row${errors.length === 1 ? "" : "s"} skipped:</p>
+          <ul style="margin:4px 0 0 18px; color:var(--red-alert); font-size:0.85rem;">${errors.map(e => `<li>${e}</li>`).join("")}</ul>`;
+      }
+      if (questions.length === 0 && errors.length === 0) {
+        html = `<p class="error-text">No valid rows found in that file.</p>`;
+      }
+      resultMsg.innerHTML = html;
+      fileInput.value = "";
+      renderList();
+    } catch (err) {
+      console.error("CSV upload failed:", err);
+      resultMsg.innerHTML = `<p class="error-text">Could not process the file: ${err.message}</p>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Upload & Add Questions";
+    }
   });
 
   function renderOptionInputs(options = ["", "", "", ""], correctIndex = 0) {

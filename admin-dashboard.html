@@ -90,6 +90,7 @@
         <option value="java">Java (fixed)</option>
         <option value="mysql">MySQL (fixed)</option>
         <option value="python">Python (fixed)</option>
+        <option value="jsp">JSP (fixed)</option>
       </select>
       <p class="small-note">"Fixed" locks the code editor to that language for this question — the student won't see a language dropdown.</p>
     </div>
@@ -319,6 +320,7 @@ Wrap text in **double asterisks** to make it bold."></textarea>
             <option value="java" ${q.language === "java" ? "selected" : ""}>Java (fixed)</option>
             <option value="mysql" ${q.language === "mysql" ? "selected" : ""}>MySQL (fixed)</option>
             <option value="python" ${q.language === "python" ? "selected" : ""}>Python (fixed)</option>
+            <option value="jsp" ${q.language === "jsp" ? "selected" : ""}>JSP (fixed)</option>
           </select>
           <label>Label</label>
           <input type="text" class="editLabel" value="${q.label}" />

@@ -6,8 +6,11 @@ import {
   collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, getDoc, query, where, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-export async function updateQuestion(id, { category, label, text }) {
-  await updateDoc(doc(db, "questions", id), { category, label, text });
+export async function updateQuestion(id, { category, label, text, language }) {
+  const data = { category, label, text };
+  if (category === "coding") data.language = language || "any";
+  else data.language = null;
+  await updateDoc(doc(db, "questions", id), data);
 }
 
 export async function deleteSubmission(studentId) {
@@ -27,8 +30,25 @@ export async function setResultsPublished(value) {
 
 // ---------- Questions ----------
 
-export async function addQuestion({ category, label, text }) {
-  await addDoc(collection(db, "questions"), { category, label, text, createdAt: new Date().toISOString() });
+export async function addQuestion({ category, label, text, language }) {
+  const data = { category, label, text, createdAt: new Date().toISOString() };
+  if (category === "coding") data.language = language || "any";
+  await addDoc(collection(db, "questions"), data);
+}
+
+/** Bulk-adds interview questions (e.g. parsed from a CSV upload). Each item: { label, text }. */
+export async function bulkAddQuestions(items) {
+  const CHUNK = 450;
+  const now = new Date().toISOString();
+  for (let i = 0; i < items.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    items.slice(i, i + CHUNK).forEach(item => {
+      const ref = doc(collection(db, "questions"));
+      batch.set(ref, { category: "interview", label: item.label || "Interview", text: item.text, createdAt: now });
+    });
+    await batch.commit();
+  }
+  return items.length;
 }
 
 export async function getAllQuestions() {
@@ -43,6 +63,47 @@ export async function deleteQuestion(id) {
 /** Deletes every interview/coding question from the question bank. Returns the count deleted. */
 export async function deleteAllQuestions() {
   const snap = await getDocs(collection(db, "questions"));
+  const docs = snap.docs;
+  const CHUNK = 450;
+  for (let i = 0; i < docs.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    docs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+  return docs.length;
+}
+
+// ---------- Allowed students (signup allowlist for bulk student management) ----------
+
+export async function getAllowedStudents() {
+  const snap = await getDocs(collection(db, "allowedStudents"));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function addAllowedStudent(email) {
+  await addDoc(collection(db, "allowedStudents"), { email: email.trim().toLowerCase(), addedAt: new Date().toISOString() });
+}
+
+export async function bulkAddAllowedStudents(emails) {
+  const CHUNK = 450;
+  const now = new Date().toISOString();
+  for (let i = 0; i < emails.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    emails.slice(i, i + CHUNK).forEach(email => {
+      const ref = doc(collection(db, "allowedStudents"));
+      batch.set(ref, { email: email.trim().toLowerCase(), addedAt: now });
+    });
+    await batch.commit();
+  }
+  return emails.length;
+}
+
+export async function deleteAllowedStudent(id) {
+  await deleteDoc(doc(db, "allowedStudents", id));
+}
+
+export async function deleteAllAllowedStudents() {
+  const snap = await getDocs(collection(db, "allowedStudents"));
   const docs = snap.docs;
   const CHUNK = 450;
   for (let i = 0; i < docs.length; i += CHUNK) {

@@ -102,3 +102,75 @@ export function parseMcqCsv(rawText) {
 
   return { questions, errors };
 }
+
+/**
+ * Parses a CSV/plain-list of interview questions.
+ * Expected columns: label, question  (header optional).
+ * Returns { questions: [{label, text}], errors }.
+ */
+export function parseInterviewCsv(rawText) {
+  const rows = parseCsv(rawText);
+  const errors = [];
+  const questions = [];
+  if (rows.length === 0) return { questions, errors: ["The file is empty."] };
+
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const looksLikeHeader = header.includes("question") || header.includes("label");
+  const dataRows = looksLikeHeader ? rows.slice(1) : rows;
+  const startRowNum = looksLikeHeader ? 2 : 1;
+  let labelIdx = 0, textIdx = 1;
+  if (looksLikeHeader) {
+    labelIdx = header.indexOf("label");
+    textIdx = header.indexOf("question");
+    if (labelIdx === -1) labelIdx = 0;
+    if (textIdx === -1) textIdx = 1;
+  }
+
+  dataRows.forEach((r, i) => {
+    const rowNum = startRowNum + i;
+    const text = (r[textIdx] || "").trim();
+    const label = (r[labelIdx] || "").trim() || "Interview";
+    if (!text) { errors.push(`Row ${rowNum}: missing question text — skipped.`); return; }
+    questions.push({ label, text });
+  });
+
+  return { questions, errors };
+}
+
+/** Extracts valid, deduped, lowercased emails from any CSV/plain-text list (one per line or comma-separated). */
+export function parseEmailCsv(rawText) {
+  const rows = parseCsv(rawText);
+  const emailRe = /^[^\s@"]+@[^\s@"]+\.[^\s@"]+$/;
+  const found = new Set();
+  const errors = [];
+  rows.forEach((r, i) => {
+    r.forEach(cell => {
+      const val = cell.trim().toLowerCase();
+      if (!val || val === "email") return; // skip blanks + a literal "email" header cell
+      if (emailRe.test(val)) found.add(val);
+      else errors.push(`Row ${i + 1}: "${cell}" doesn't look like a valid email — skipped.`);
+    });
+  });
+  return { emails: [...found], errors };
+}
+
+/** Converts an array of row-arrays into an RFC4180-ish CSV string (quotes fields containing , " or newlines). */
+export function toCsvString(rows) {
+  const escapeCell = (val) => {
+    const s = String(val ?? "");
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return rows.map(r => r.map(escapeCell).join(",")).join("\n");
+}
+
+/** Builds a CSV file client-side and triggers a browser download. */
+export function downloadCsv(filename, rows) {
+  const csv = toCsvString(rows);
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

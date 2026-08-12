@@ -9,7 +9,7 @@ import {
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  doc, setDoc, getDoc
+  doc, setDoc, getDoc, collection, query, where, limit, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from "./firebase-config.js";
 
@@ -30,8 +30,29 @@ export async function uploadReferencePhoto(blobOrFile, uid) {
   return data.secure_url;
 }
 
+/**
+ * The allowlist restriction only kicks in if the admin has added at least one
+ * allowed email (via the Allowed Students page). If the list is empty, signup
+ * stays open to anyone — so this feature is fully opt-in.
+ */
+async function isAllowlistActive() {
+  const snap = await getDocs(query(collection(db, "allowedStudents"), limit(1)));
+  return !snap.empty;
+}
+
+async function isEmailAllowed(email) {
+  const snap = await getDocs(query(collection(db, "allowedStudents"), where("email", "==", email.trim().toLowerCase())));
+  return !snap.empty;
+}
+
 /** Student signup: creates auth user + Firestore profile with reference photo URL. */
 export async function signupStudent({ name, email, password, referencePhotoFile }) {
+  if (await isAllowlistActive()) {
+    if (!(await isEmailAllowed(email))) {
+      throw new Error("This email is not authorized to sign up. Please contact your administrator.");
+    }
+  }
+
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   const uid = cred.user.uid;
   const referencePhotoURL = await uploadReferencePhoto(referencePhotoFile, uid);

@@ -118,6 +118,7 @@ function renderQuestions() {
     const card = document.createElement("div");
     card.className = "question-card";
     const isCoding = q.category === "coding";
+    const fixedLang = isCoding && q.language && q.language !== "any" ? q.language : null;
 
     card.innerHTML = `
       <div class="q-meta">
@@ -128,14 +129,18 @@ function renderQuestions() {
       </div>
       <div class="q-text">${formatQuestionText(q.text)}</div>
       ${isCoding ? `
-        <select class="code-lang-select" data-qid="${q.id}">
-          <option value="html">HTML</option>
-          <option value="css">CSS</option>
-          <option value="javascript">JavaScript</option>
-          <option value="java">Java</option>
-          <option value="mysql">MySQL</option>
-          <option value="python">Python</option>
-        </select>
+        ${fixedLang ? `
+          <span class="badge badge-black" style="display:inline-block; margin-bottom:8px;">Language: ${fixedLang}</span>
+        ` : `
+          <select class="code-lang-select" data-qid="${q.id}">
+            <option value="html">HTML</option>
+            <option value="css">CSS</option>
+            <option value="javascript">JavaScript</option>
+            <option value="java">Java</option>
+            <option value="mysql">MySQL</option>
+            <option value="python">Python</option>
+          </select>
+        `}
         <textarea class="code-area" data-qid="${q.id}"></textarea>
       ` : `
         <textarea data-qid="${q.id}" placeholder="Type your answer here..."></textarea>
@@ -146,10 +151,11 @@ function renderQuestions() {
     if (isCoding) {
       const textareaEl = card.querySelector(`textarea.code-area[data-qid="${q.id}"]`);
       const langSelect = card.querySelector(`select[data-qid="${q.id}"]`);
+      const currentLang = fixedLang || langSelect.value;
       const cm = CodeMirror.fromTextArea(textareaEl, {
         lineNumbers: true,
         theme: "material-darker",
-        mode: LANGUAGE_MODES[langSelect.value],
+        mode: LANGUAGE_MODES[currentLang],
         indentUnit: 2,
         tabSize: 2,
         viewportMargin: Infinity
@@ -157,13 +163,15 @@ function renderQuestions() {
       codeEditors[q.id] = cm;
 
       cm.on("change", debounce(() => {
-        saveAnswer(q.id, cm.getValue(), langSelect.value);
+        saveAnswer(q.id, cm.getValue(), currentLang);
       }, 800));
 
-      langSelect.addEventListener("change", () => {
-        cm.setOption("mode", LANGUAGE_MODES[langSelect.value]);
-        saveAnswer(q.id, cm.getValue(), langSelect.value);
-      });
+      if (langSelect) {
+        langSelect.addEventListener("change", () => {
+          cm.setOption("mode", LANGUAGE_MODES[langSelect.value]);
+          saveAnswer(q.id, cm.getValue(), langSelect.value);
+        });
+      }
     }
   });
 

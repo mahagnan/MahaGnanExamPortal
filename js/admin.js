@@ -114,6 +114,19 @@ export async function deleteAllAllowedStudents() {
   return docs.length;
 }
 
+// ---------- Signup restriction ON/OFF switch ----------
+// Independent of the allowlist itself — lets the admin keep the email list
+// uploaded permanently and just flip restriction on/off per event/session.
+
+export async function getSignupRestrictionEnabled() {
+  const snap = await getDoc(doc(db, "settings", "signupRestriction"));
+  return snap.exists() ? !!snap.data().enabled : null; // null = not explicitly set yet
+}
+
+export async function setSignupRestrictionEnabled(value) {
+  await setDoc(doc(db, "settings", "signupRestriction"), { enabled: !!value });
+}
+
 // ---------- Submissions ----------
 
 export async function getAllSubmissions() {

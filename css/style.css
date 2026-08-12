@@ -463,3 +463,71 @@ footer.site-footer {
   font-size: 0.78rem;
   color: var(--gray-text);
 }
+
+/* ============================================
+   RICH QUESTION FORMATTING — code blocks, notes, highlight
+   ============================================ */
+.q-code-block {
+  background: var(--black);
+  color: #e5f3e6;
+  padding: 14px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: "Consolas", "Monaco", monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 10px 0;
+}
+.q-code-block code { background: none; color: inherit; padding: 0; }
+code {
+  background: var(--green-pale);
+  color: var(--green-deep);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: "Consolas", "Monaco", monospace;
+  font-size: 0.9em;
+}
+.q-note {
+  background: var(--amber-pale);
+  border-left: 4px solid var(--amber);
+  color: var(--ink);
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin: 10px 0;
+  font-size: 0.92rem;
+}
+mark.q-highlight {
+  background: #fff2a8;
+  color: var(--ink);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* ============================================
+   LEADERBOARD
+   ============================================ */
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: var(--bg-soft);
+}
+.leaderboard-row.me { background: var(--green-pale); border: 1.5px solid var(--green-mid); }
+.leaderboard-rank {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--green-deep);
+  min-width: 28px;
+}
+
+/* ============================================
+   SCORE DISTRIBUTION BARS (admin analytics)
+   ============================================ */
+.dist-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.dist-bar-label { min-width: 70px; font-size: 0.82rem; color: var(--gray-text); }
+.dist-bar-track { flex: 1; background: var(--gray-line); border-radius: 6px; height: 18px; overflow: hidden; }
+.dist-bar-fill { background: var(--green-mid); height: 100%; border-radius: 6px; }
+.dist-bar-count { min-width: 30px; text-align: right; font-size: 0.82rem; color: var(--ink); font-weight: 600; }

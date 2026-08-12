@@ -19,6 +19,7 @@
     <a href="admin-submissions.html">Submissions &amp; Grading</a>
     <a href="admin-mcq.html"><strong>MCQ Questions</strong></a>
     <a href="admin-mcq-results.html">MCQ Results</a>
+    <a href="admin-students.html">Allowed Students</a>
     <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
   </div>
 </div>
@@ -28,12 +29,53 @@
   <p class="small-note">A separate, fully proctored test. Each question needs exactly one correct answer and 3 wrong options. Order and options are shuffled per student, and results are shown to the student instantly after submission — no manual grading needed.</p>
 
   <div class="card mt-24">
-    <div class="flex-between" style="flex-wrap:wrap; gap:16px;">
-      <div>
-        <label for="durationInput" style="margin-top:0;">Exam Duration (minutes)</label>
-        <input type="number" id="durationInput" min="1" style="max-width:140px;" />
+    <h3 style="margin-top:0;">Exam Settings</h3>
+    <div class="flex gap-16" style="flex-wrap:wrap;">
+      <div style="flex:1; min-width:160px;">
+        <label for="durationInput" style="margin-top:0;">Duration (minutes)</label>
+        <input type="number" id="durationInput" min="1" />
       </div>
-      <button class="btn btn-outline btn-sm" id="saveDurationBtn" style="align-self:flex-end;">Save Duration</button>
+      <div style="flex:1; min-width:160px;">
+        <label for="questionsPerAttemptInput" style="margin-top:0;">Questions per Attempt</label>
+        <input type="number" id="questionsPerAttemptInput" min="0" placeholder="0 = use all" />
+      </div>
+      <div style="flex:1; min-width:160px;">
+        <label for="passPercentInput" style="margin-top:0;">Pass Percentage (%)</label>
+        <input type="number" id="passPercentInput" min="1" max="100" />
+      </div>
+    </div>
+    <p class="small-note">"Questions per Attempt" picks a random subset from your full question bank for each student — leave at 0 to show every question to everyone.</p>
+
+    <div class="circuit-divider" style="margin:18px 0;"><span class="node"></span></div>
+
+    <div class="flex gap-8" style="align-items:center;">
+      <input type="checkbox" id="scheduleEnabledInput" style="width:auto;" />
+      <label for="scheduleEnabledInput" style="margin:0;">Restrict this test to a time window</label>
+    </div>
+    <div class="flex gap-16 mt-16" style="flex-wrap:wrap;">
+      <div style="flex:1; min-width:200px;">
+        <label for="scheduleStartInput" style="margin-top:0;">Opens At</label>
+        <input type="datetime-local" id="scheduleStartInput" />
+      </div>
+      <div style="flex:1; min-width:200px;">
+        <label for="scheduleEndInput" style="margin-top:0;">Closes At</label>
+        <input type="datetime-local" id="scheduleEndInput" />
+      </div>
+    </div>
+    <p class="small-note">Students can only start the test between these times when the checkbox above is on. Times are based on each student's device clock.</p>
+
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-primary btn-sm" id="saveSettingsBtn">Save Settings</button>
+    </div>
+
+    <div class="circuit-divider" style="margin:18px 0;"><span class="node"></span></div>
+
+    <div class="flex-between" style="flex-wrap:wrap; gap:12px;">
+      <div>
+        <div style="font-weight:600;">Leaderboard</div>
+        <p class="small-note" style="margin:2px 0 0;">When on, students see top scorers after submitting their test.</p>
+      </div>
+      <button class="btn btn-sm" id="leaderboardToggleBtn">Loading...</button>
     </div>
   </div>
 
@@ -56,6 +98,7 @@
     <h3 id="formTitle">Add MCQ Question</h3>
     <label for="mcqText">Question</label>
     <textarea id="mcqText" placeholder="Type the question here..."></textarea>
+    <p class="small-note">Formatting: <code>**bold**</code>, <code>`inline code`</code>, <code>```code block```</code>, <code>==highlight==</code>, and a line starting with <code>&gt; </code> becomes a note callout.</p>
 
     <label class="mt-16">Options — mark the correct one</label>
     <div id="optionsArea"></div>
@@ -87,12 +130,23 @@
   import {
     addMcqQuestion, getAllMcqQuestions, updateMcqQuestion, deleteMcqQuestion,
     deleteAllMcqQuestions, bulkAddMcqQuestions,
-    getMcqDurationMinutes, setMcqDurationMinutes
+    getMcqDurationMinutes, setMcqDurationMinutes,
+    getMcqQuestionsPerAttempt, setMcqQuestionsPerAttempt,
+    getMcqPassPercent, setMcqPassPercent,
+    getMcqSchedule, setMcqSchedule,
+    getMcqLeaderboardEnabled, setMcqLeaderboardEnabled
   } from "./js/mcq.js";
   import { formatQuestionText } from "./js/format.js";
   import { parseMcqCsv } from "./js/csv-utils.js";
 
   let editingId = null;
+
+  function toLocalInputValue(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
 
   onAuthStateChanged(auth, async (user) => {
     if (!user || !(await isAdmin(user.uid))) {
@@ -100,6 +154,15 @@
       return;
     }
     document.getElementById("durationInput").value = await getMcqDurationMinutes();
+    document.getElementById("questionsPerAttemptInput").value = await getMcqQuestionsPerAttempt();
+    document.getElementById("passPercentInput").value = await getMcqPassPercent();
+
+    const schedule = await getMcqSchedule();
+    document.getElementById("scheduleEnabledInput").checked = !!schedule.enabled;
+    document.getElementById("scheduleStartInput").value = toLocalInputValue(schedule.startTime);
+    document.getElementById("scheduleEndInput").value = toLocalInputValue(schedule.endTime);
+
+    renderLeaderboardToggle();
     renderList();
   });
 
@@ -108,12 +171,62 @@
     window.location.href = "admin-login.html";
   });
 
-  document.getElementById("saveDurationBtn").addEventListener("click", async () => {
-    const val = document.getElementById("durationInput").value;
-    if (!val || val < 1) return;
-    await setMcqDurationMinutes(val);
-    alert("Duration saved.");
+  document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
+    const duration = document.getElementById("durationInput").value;
+    const perAttempt = document.getElementById("questionsPerAttemptInput").value;
+    const passPercent = document.getElementById("passPercentInput").value;
+    const enabled = document.getElementById("scheduleEnabledInput").checked;
+    const startLocal = document.getElementById("scheduleStartInput").value;
+    const endLocal = document.getElementById("scheduleEndInput").value;
+
+    if (!duration || duration < 1) { alert("Please enter a valid duration."); return; }
+    if (enabled && (!startLocal || !endLocal)) { alert("Please set both an open and close time, or turn off scheduling."); return; }
+    if (enabled && new Date(startLocal) >= new Date(endLocal)) { alert("The open time must be before the close time."); return; }
+
+    const btn = document.getElementById("saveSettingsBtn");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    try {
+      await setMcqDurationMinutes(duration);
+      await setMcqQuestionsPerAttempt(perAttempt);
+      await setMcqPassPercent(passPercent || 50);
+      await setMcqSchedule({
+        enabled,
+        startTime: startLocal ? new Date(startLocal).toISOString() : null,
+        endTime: endLocal ? new Date(endLocal).toISOString() : null
+      });
+      alert("Settings saved.");
+    } catch (err) {
+      console.error("Failed to save settings:", err);
+      alert("Could not save settings: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Save Settings";
+    }
   });
+
+  async function renderLeaderboardToggle() {
+    const btn = document.getElementById("leaderboardToggleBtn");
+    try {
+      const enabled = await getMcqLeaderboardEnabled();
+      btn.textContent = enabled ? "On — Click to Turn Off" : "Off — Click to Turn On";
+      btn.className = enabled ? "btn btn-sm btn-primary" : "btn btn-sm btn-outline";
+      btn.disabled = false;
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          await setMcqLeaderboardEnabled(!enabled);
+          await renderLeaderboardToggle();
+        } catch (err) {
+          alert("Could not update leaderboard setting: " + err.message);
+          btn.disabled = false;
+        }
+      };
+    } catch (err) {
+      console.error("Failed to load leaderboard setting:", err);
+      btn.textContent = "Error loading";
+    }
+  }
 
   // ---------- Delete all questions ----------
   document.getElementById("deleteAllBtn").addEventListener("click", async () => {

@@ -26,7 +26,17 @@
 
 <div class="container">
   <h2>Allowed Students</h2>
-  <p class="small-note">This is an <strong>optional</strong> allowlist. If this list has at least one email, only those emails can create a student account on the signup page — anyone else is blocked. If the list is empty, signup stays open to everyone (default behavior).</p>
+  <p class="small-note">This is an <strong>optional</strong> allowlist. Keep your full student/candidate list uploaded here permanently, then use the switch below to turn restriction on only when you actually need it — no need to add or remove emails each time.</p>
+
+  <div class="card mt-24" style="border:1.5px solid var(--green-mid);">
+    <div class="flex-between" style="flex-wrap:wrap; gap:12px;">
+      <div>
+        <h3 style="margin:0;">Restrict Signup to Allowed Emails</h3>
+        <p class="small-note" id="restrictionStatusNote" style="margin:4px 0 0;">Loading...</p>
+      </div>
+      <button class="btn btn-sm" id="restrictionToggleBtn">Loading...</button>
+    </div>
+  </div>
 
   <div class="card mt-24">
     <div class="flex-between" style="flex-wrap:wrap; gap:16px; align-items:flex-start;">
@@ -67,7 +77,8 @@
   import { isAdmin, logoutUser } from "./js/auth.js";
   import {
     getAllowedStudents, addAllowedStudent, bulkAddAllowedStudents,
-    deleteAllowedStudent, deleteAllAllowedStudents
+    deleteAllowedStudent, deleteAllAllowedStudents,
+    getSignupRestrictionEnabled, setSignupRestrictionEnabled
   } from "./js/admin.js";
   import { parseEmailCsv } from "./js/csv-utils.js";
 
@@ -76,8 +87,50 @@
       window.location.href = "admin-login.html";
       return;
     }
+    renderRestrictionToggle();
     renderList();
   });
+
+  async function renderRestrictionToggle() {
+    const btn = document.getElementById("restrictionToggleBtn");
+    const note = document.getElementById("restrictionStatusNote");
+    try {
+      let enabled = await getSignupRestrictionEnabled();
+      if (enabled === null) {
+        // Never explicitly set — fall back to the old list-based behavior for the status display.
+        const list = await getAllowedStudents();
+        enabled = list.length > 0;
+      }
+      btn.textContent = enabled ? "ON — Click to Turn Off" : "OFF — Click to Turn On";
+      btn.className = enabled ? "btn btn-sm" : "btn btn-sm btn-outline";
+      if (enabled) btn.style.cssText = "background:var(--red-alert); color:var(--white); border:none;";
+      else btn.style.cssText = "";
+      note.textContent = enabled
+        ? "Restriction is ON — only allowed emails below can sign up right now."
+        : "Restriction is OFF — anyone can sign up right now, even if you have emails saved below.";
+      btn.disabled = false;
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          if (!enabled) {
+            const list = await getAllowedStudents();
+            if (list.length === 0) {
+              const proceed = confirm("Your Allowed Emails list is empty. Turning restriction ON right now would block everyone from signing up. Add emails first, or continue anyway?");
+              if (!proceed) { btn.disabled = false; return; }
+            }
+          }
+          await setSignupRestrictionEnabled(!enabled);
+          await renderRestrictionToggle();
+        } catch (err) {
+          alert("Could not update the restriction setting: " + err.message);
+          btn.disabled = false;
+        }
+      };
+    } catch (err) {
+      console.error("Failed to load restriction setting:", err);
+      btn.textContent = "Error loading";
+    }
+  }
 
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     await logoutUser();

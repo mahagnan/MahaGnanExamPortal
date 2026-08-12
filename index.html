@@ -4,20 +4,131 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Mah'a Gnan Test Portal</title>
+<meta name="description" content="Secure, proctored online assessments — interview questions, live coding, and instantly-graded MCQ tests, verified by face match and monitored throughout." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css" />
+
+<!-- Page-only styles for the upgraded landing page. Nothing here touches css/style.css —
+     it reuses the same CSS variables (colors, radius, shadows) already defined there. -->
+<style>
+  .hero-section {
+    padding: 64px 24px 48px;
+    text-align: center;
+    background: radial-gradient(ellipse at top, var(--green-pale) 0%, var(--white) 60%);
+  }
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 100px;
+    background: var(--green-pale);
+    color: var(--green-deep);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .trust-strip {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .trust-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 100px;
+    background: var(--white);
+    border: 1px solid var(--gray-line);
+    font-size: 0.78rem;
+    color: var(--gray-text);
+    font-weight: 600;
+  }
+  .landing-section {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 12px 24px 56px;
+  }
+  .landing-section h2 {
+    text-align: center;
+    font-size: 1.6rem;
+  }
+  .landing-subtitle {
+    text-align: center;
+    max-width: 560px;
+    margin: 0 auto 32px;
+  }
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+  }
+  .feature-card {
+    background: var(--white);
+    border: 1px solid var(--gray-line);
+    border-radius: var(--radius);
+    padding: 22px;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.15s ease, transform 0.1s ease;
+  }
+  .feature-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+  .feature-card .icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    background: var(--green-pale);
+    color: var(--green-deep);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.15rem;
+    margin-bottom: 14px;
+  }
+  .feature-card h3 { font-size: 1rem; margin-bottom: 6px; }
+  .feature-card p { font-size: 0.86rem; margin: 0; }
+  .steps-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 24px;
+    margin-top: 8px;
+  }
+  .step-item { text-align: center; }
+  .step-circle {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--black);
+    color: var(--white);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    margin: 0 auto 12px;
+  }
+  .step-item h3 { font-size: 0.98rem; margin-bottom: 4px; }
+  .step-item p { font-size: 0.84rem; margin: 0; }
+  .cta-band {
+    background: var(--black);
+    border-radius: var(--radius);
+    padding: 40px 28px;
+    text-align: center;
+    max-width: 1080px;
+    margin: 0 auto 56px;
+  }
+  .cta-band h2 { color: var(--white); }
+  .cta-band p { color: rgba(255,255,255,0.75); max-width: 480px; margin: 0 auto 20px; }
+</style>
 </head>
 <body>
 
-<div class="page-center">
-  <div class="text-center" style="max-width:640px;">
-    <img src="assets/logo.png" alt="Mah'a Gnan" style="height:96px; margin-bottom:14px;" />
-    <h1 style="font-size:1.9rem;">Mah'a Gnan Test Portal</h1>
-    <p class="small-note" style="letter-spacing:0.14em; text-transform:uppercase; color:var(--green-mid); font-weight:600;">
-      Learn &bull; Grow &bull; Innovate
-    </p>
-    <p class="mt-16">Secure, proctored online assessments — interview questions and live coding, verified by face match and monitored throughout.</p>
+<!-- ============== HERO ============== -->
+<section class="hero-section">
+  <div style="max-width:640px; margin:0 auto;">
+    <img src="assets/logo.png" alt="Mah'a Gnan" style="height:88px; margin-bottom:14px; border-radius:50px;" /> <br>
+    <div class="hero-eyebrow">&#9889; Learn &bull; Grow &bull; Innovate</div>
+    <h1 style="font-size:2rem;">Mah'a Gnan Test Portal</h1>
+    <p class="mt-16">Secure, proctored online assessments — interview questions and live coding, plus instantly-graded MCQ screening tests. Every session is face-verified and monitored throughout.</p>
 
     <div class="role-grid">
       <a href="student-login.html" style="text-decoration:none;">
@@ -34,14 +145,90 @@
           <p>View your graded results</p>
         </div>
       </a>
-      <a href="admin-login.html" style="text-decoration:none;">
-        <div class="role-card">
-          <div class="icon">&#9881;</div>
-          <h3>Admin</h3>
-          <p>Manage questions and review results</p>
-        </div>
-      </a>
+      
     </div>
+
+    <div class="trust-strip">
+      <span class="trust-chip">&#128272; Face-Verified Login</span>
+      <span class="trust-chip">&#127909; Live Camera Monitoring</span>
+      <span class="trust-chip">&#9203; Instant MCQ Scoring</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============== FEATURES ============== -->
+<section class="landing-section">
+  <div class="circuit-divider"><span class="node"></span></div>
+  <h2>Why Mah'a Gnan</h2>
+  <p class="landing-subtitle">Everything you need to run fair, cheat-resistant assessments — for interview screening, coding rounds, or quick MCQ tests.</p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="icon">&#128064;</div>
+      <h3>Face-Verified Proctoring</h3>
+      <p>Every student registers a reference photo, and the camera watches throughout the test — flagging extra people, no-face, and looking-away events automatically.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#9989;</div>
+      <h3>Instant MCQ Results</h3>
+      <p>Screening tests are auto-graded the second a student submits — score, a personalized performance note, and a full answer review with correct answers shown for every mistake.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#127922;</div>
+      <h3>Randomized Question Sets</h3>
+      <p>Each student can get a shuffled subset pulled from a larger question bank, in a unique order — makes screen-sharing or "compare answers" cheating far less useful.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128196;</div>
+      <h3>Certificates &amp; CSV Reports</h3>
+      <p>Students can download a result PDF right after their MCQ test. Admins can export full submission and score data to CSV for offline records.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#127942;</div>
+      <h3>Opt-in Leaderboard</h3>
+      <p>Turn on a top-scorers leaderboard for any MCQ test — students see how they stack up right after submitting, only when you choose to enable it.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128187;</div>
+      <h3>Real Code Editor</h3>
+      <p>Coding questions open in a full syntax-highlighted editor across HTML, CSS, JavaScript, Java, MySQL, and Python — fixed per question or left for the student to choose.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============== HOW IT WORKS ============== -->
+<section class="landing-section">
+  <div class="circuit-divider"><span class="node"></span></div>
+  <h2>How It Works</h2>
+  <p class="landing-subtitle">Three steps, start to finish.</p>
+
+  <div class="steps-row">
+    <div class="step-item">
+      <div class="step-circle">1</div>
+      <h3>Sign Up &amp; Verify</h3>
+      <p>Create a student account and capture a quick reference photo — this is what proctoring checks against during the test.</p>
+    </div>
+    <div class="step-item">
+      <div class="step-circle">2</div>
+      <h3>Take Your Test</h3>
+      <p>Choose interview &amp; coding or MCQ screening. Fullscreen and camera monitoring start automatically once you begin.</p>
+    </div>
+    <div class="step-item">
+      <div class="step-circle">3</div>
+      <h3>Get Your Results</h3>
+      <p>MCQ scores appear instantly with a full review. Interview &amp; coding answers are graded by an instructor and published when ready.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============== CTA ============== -->
+<div class="cta-band">
+  <h2>Ready when you are</h2>
+  <p>Log in to start your assessment, or head to Admin to set up questions and review results.</p>
+  <div class="flex gap-16" style="justify-content:center; flex-wrap:wrap;">
+    <a href="student-login.html" class="btn btn-primary">Student Login</a>
+    <a href="admin-login.html" class="btn btn-outline" style="background:transparent; color:var(--white); border-color:rgba(255,255,255,0.4);">Admin Login</a>
+    
   </div>
 </div>
 

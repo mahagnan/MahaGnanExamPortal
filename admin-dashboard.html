@@ -18,6 +18,7 @@
     <a href="admin-submissions.html">Submissions &amp; Grading</a>
     <a href="admin-mcq.html">MCQ Questions</a>
     <a href="admin-mcq-results.html">MCQ Results</a>
+    <a href="admin-students.html">Allowed Students</a>
     <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
   </div>
 </div>
@@ -57,12 +58,41 @@
   <p class="small-note">Post interview and coding questions. Order is jumbled automatically per student. Use labels to organize (e.g. "Easy", "Hard", "SQL", "Arrays") — type any label you like.</p>
 
   <div class="card mt-24">
+    <div class="flex-between" style="flex-wrap:wrap; gap:16px; align-items:flex-start;">
+      <div>
+        <h3 style="margin-top:0;">Bulk Upload Interview Questions from CSV</h3>
+        <p class="small-note">Columns: <code>label, question</code> (header optional). Coding questions still need to be added manually below, since each one needs a code language setting.</p>
+        <input type="file" id="csvInput" accept=".csv,text/csv" />
+      </div>
+      <div class="flex" style="flex-direction:column; gap:8px; align-items:flex-end;">
+        <button class="btn btn-primary btn-sm" id="csvUploadBtn">Upload &amp; Add Questions</button>
+        <a href="#" id="csvSampleLink" class="small-note">Download sample CSV</a>
+      </div>
+    </div>
+    <div id="csvResultMsg" class="mt-16"></div>
+  </div>
+
+  <div class="card mt-24">
     <h3>Add Question</h3>
     <label for="qCategory">Category</label>
     <select id="qCategory">
       <option value="interview">Interview (plain text answer)</option>
       <option value="coding">Coding (code editor answer)</option>
     </select>
+
+    <div id="languageFieldWrap" class="hidden">
+      <label for="qLanguage">Code Language</label>
+      <select id="qLanguage">
+        <option value="any">Student Chooses (any language)</option>
+        <option value="html">HTML (fixed)</option>
+        <option value="css">CSS (fixed)</option>
+        <option value="javascript">JavaScript (fixed)</option>
+        <option value="java">Java (fixed)</option>
+        <option value="mysql">MySQL (fixed)</option>
+        <option value="python">Python (fixed)</option>
+      </select>
+      <p class="small-note">"Fixed" locks the code editor to that language for this question — the student won't see a language dropdown.</p>
+    </div>
 
     <label for="qLabel">Label <span class="small-note">(your own tag — Easy, Hard, SQL, Arrays, anything)</span></label>
     <input type="text" id="qLabel" list="labelSuggestions" placeholder="e.g. Easy" />
@@ -72,7 +102,7 @@
     <textarea id="qText" placeholder="Type the question here...
 Press Enter for new lines.
 Wrap text in **double asterisks** to make it bold."></textarea>
-    <p class="small-note">Line breaks are preserved exactly as you type them. Use **text** for bold.</p>
+    <p class="small-note">Formatting: <code>**bold**</code>, <code>`inline code`</code>, <code>```code block```</code> (triple backticks, multi-line), <code>==highlight==</code>, and a line starting with <code>&gt; </code> becomes a note callout box.</p>
 
     <div class="error-text" id="errorMsg"></div>
     <button class="btn btn-primary" id="addBtn">Add Question</button>
@@ -96,7 +126,8 @@ Wrap text in **double asterisks** to make it bold."></textarea>
   import { auth } from "./js/firebase-config.js";
   import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { isAdmin, logoutUser } from "./js/auth.js";
-  import { addQuestion, getAllQuestions, deleteQuestion, deleteAllQuestions, getAllSubmissions, updateQuestion, getResultsPublished, setResultsPublished } from "./js/admin.js";
+  import { addQuestion, getAllQuestions, deleteQuestion, deleteAllQuestions, bulkAddQuestions, getAllSubmissions, updateQuestion, getResultsPublished, setResultsPublished } from "./js/admin.js";
+  import { parseInterviewCsv } from "./js/csv-utils.js";
   import { formatQuestionText, normalizeQuestion } from "./js/format.js";
 
   async function renderStats() {
@@ -150,10 +181,20 @@ Wrap text in **double asterisks** to make it bold."></textarea>
     window.location.href = "admin-login.html";
   });
 
+  // Show/hide the code-language field based on category
+  const qCategoryEl = document.getElementById("qCategory");
+  const languageWrap = document.getElementById("languageFieldWrap");
+  function syncLanguageFieldVisibility() {
+    languageWrap.classList.toggle("hidden", qCategoryEl.value !== "coding");
+  }
+  qCategoryEl.addEventListener("change", syncLanguageFieldVisibility);
+  syncLanguageFieldVisibility();
+
   document.getElementById("addBtn").addEventListener("click", async () => {
-    const category = document.getElementById("qCategory").value;
+    const category = qCategoryEl.value;
     const label = document.getElementById("qLabel").value.trim() || (category === "interview" ? "Interview" : "Coding");
     const text = document.getElementById("qText").value.trim();
+    const language = document.getElementById("qLanguage").value;
     const errorMsg = document.getElementById("errorMsg");
     errorMsg.textContent = "";
 
@@ -162,10 +203,52 @@ Wrap text in **double asterisks** to make it bold."></textarea>
       return;
     }
 
-    await addQuestion({ category, label, text });
+    await addQuestion({ category, label, text, language });
     document.getElementById("qText").value = "";
     document.getElementById("qLabel").value = "";
     renderList();
+  });
+
+  // ---------- Interview CSV bulk upload ----------
+  document.getElementById("csvSampleLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    const sample = ["label,question", "Easy,\"Explain the difference between let and const in JavaScript.\"", "SQL,\"What is a primary key?\""].join("\n");
+    const blob = new Blob([sample], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "interview-questions-sample.csv"; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById("csvUploadBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("csvInput");
+    const resultMsg = document.getElementById("csvResultMsg");
+    resultMsg.innerHTML = "";
+    const file = fileInput.files[0];
+    if (!file) { resultMsg.innerHTML = `<p class="error-text">Please choose a CSV file first.</p>`; return; }
+
+    const btn = document.getElementById("csvUploadBtn");
+    btn.disabled = true;
+    btn.textContent = "Uploading...";
+    try {
+      const rawText = await file.text();
+      const { questions, errors } = parseInterviewCsv(rawText);
+      if (questions.length > 0) await bulkAddQuestions(questions);
+
+      let html = "";
+      if (questions.length > 0) html += `<p style="color:var(--green-deep); font-weight:600;">&#10003; Added ${questions.length} interview question${questions.length === 1 ? "" : "s"}.</p>`;
+      if (errors.length > 0) html += `<p class="error-text" style="margin-top:8px;">${errors.length} row${errors.length === 1 ? "" : "s"} skipped:</p><ul style="margin:4px 0 0 18px; color:var(--red-alert); font-size:0.85rem;">${errors.map(e => `<li>${e}</li>`).join("")}</ul>`;
+      if (questions.length === 0 && errors.length === 0) html = `<p class="error-text">No valid rows found in that file.</p>`;
+      resultMsg.innerHTML = html;
+      fileInput.value = "";
+      renderList();
+    } catch (err) {
+      console.error("CSV upload failed:", err);
+      resultMsg.innerHTML = `<p class="error-text">Could not process the file: ${err.message}</p>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Upload & Add Questions";
+    }
   });
 
   document.getElementById("deleteAllBtn").addEventListener("click", async () => {
@@ -219,12 +302,23 @@ Wrap text in **double asterisks** to make it bold."></textarea>
             <button class="btn btn-outline btn-sm delBtn">Delete</button>
           </div>
         </div>
+        ${q.category === "coding" ? `<span class="badge badge-black mt-16" style="display:inline-block;">Language: ${q.language && q.language !== "any" ? q.language : "Student Chooses"}</span>` : ""}
         <p class="question-list-text viewMode">${formatQuestionText(q.text)}</p>
         <div class="editMode hidden">
           <label>Category</label>
           <select class="editCategory">
             <option value="interview" ${q.category === "interview" ? "selected" : ""}>Interview</option>
             <option value="coding" ${q.category === "coding" ? "selected" : ""}>Coding</option>
+          </select>
+          <label>Code Language <span class="small-note">(only used for Coding questions)</span></label>
+          <select class="editLanguage">
+            <option value="any" ${(!q.language || q.language === "any") ? "selected" : ""}>Student Chooses (any language)</option>
+            <option value="html" ${q.language === "html" ? "selected" : ""}>HTML (fixed)</option>
+            <option value="css" ${q.language === "css" ? "selected" : ""}>CSS (fixed)</option>
+            <option value="javascript" ${q.language === "javascript" ? "selected" : ""}>JavaScript (fixed)</option>
+            <option value="java" ${q.language === "java" ? "selected" : ""}>Java (fixed)</option>
+            <option value="mysql" ${q.language === "mysql" ? "selected" : ""}>MySQL (fixed)</option>
+            <option value="python" ${q.language === "python" ? "selected" : ""}>Python (fixed)</option>
           </select>
           <label>Label</label>
           <input type="text" class="editLabel" value="${q.label}" />
@@ -250,8 +344,9 @@ Wrap text in **double asterisks** to make it bold."></textarea>
         const newCategory = card.querySelector(".editCategory").value;
         const newLabel = card.querySelector(".editLabel").value.trim() || "General";
         const newText = card.querySelector(".editTextarea").value.trim();
+        const newLanguage = card.querySelector(".editLanguage").value;
         if (!newText) return;
-        await updateQuestion(q.id, { category: newCategory, label: newLabel, text: newText });
+        await updateQuestion(q.id, { category: newCategory, label: newLabel, text: newText, language: newLanguage });
         renderList();
       });
       card.querySelector(".delBtn").addEventListener("click", async () => {

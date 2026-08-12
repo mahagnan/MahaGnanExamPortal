@@ -31,11 +31,20 @@ export async function uploadReferencePhoto(blobOrFile, uid) {
 }
 
 /**
- * The allowlist restriction only kicks in if the admin has added at least one
- * allowed email (via the Allowed Students page). If the list is empty, signup
- * stays open to anyone — so this feature is fully opt-in.
+ * Whether new student signups are currently restricted to the allowlist.
+ *
+ * Priority:
+ * 1. If the admin has explicitly used the ON/OFF switch on the Allowed Students
+ *    page (settings/signupRestriction), that value always wins — this is how you
+ *    pause/resume restriction for a specific college visit without touching the list.
+ * 2. If the switch has never been touched, fall back to the old behavior: restricted
+ *    only if the allowlist has at least one email in it.
  */
 async function isAllowlistActive() {
+  const toggleSnap = await getDoc(doc(db, "settings", "signupRestriction"));
+  if (toggleSnap.exists()) {
+    return !!toggleSnap.data().enabled;
+  }
   const snap = await getDocs(query(collection(db, "allowedStudents"), limit(1)));
   return !snap.empty;
 }

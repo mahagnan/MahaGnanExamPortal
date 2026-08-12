@@ -107,7 +107,10 @@ const LANGUAGE_MODES = {
   javascript: "javascript",
   java: "text/x-java",
   mysql: "text/x-sql",
-  python: "text/x-python"
+  python: "text/x-python",
+  jsp: "htmlmixed" // JSP is HTML with embedded Java scriptlets — htmlmixed is the closest CodeMirror 5 mode
+                    // available without adding another CDN library; it highlights the HTML/tag structure well,
+                    // it just won't specially color <% ... %> scriptlet blocks.
 };
 
 const codeEditors = {}; // qid -> CodeMirror instance
@@ -139,6 +142,7 @@ function renderQuestions() {
             <option value="java">Java</option>
             <option value="mysql">MySQL</option>
             <option value="python">Python</option>
+            <option value="jsp">JSP</option>
           </select>
         `}
         <textarea class="code-area" data-qid="${q.id}"></textarea>

@@ -18,6 +18,7 @@
     <a href="admin-dashboard.html">Question Bank</a>
     <a href="admin-mcq.html">MCQ Questions</a>
     <a href="admin-mcq-results.html">MCQ Results</a>
+    <a href="admin-students.html">Allowed Students</a>
     <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
   </div>
 </div>
@@ -27,8 +28,9 @@
   <p class="small-note">Select a student to view answers, grade manually, and review proctoring snapshots.</p>
 
   <div class="card mt-24" style="padding:0; overflow:hidden;">
-    <div style="padding:16px;">
-      <input type="text" id="searchBox" placeholder="Search by student name or email..." />
+    <div class="flex-between" style="padding:16px; flex-wrap:wrap; gap:12px;">
+      <input type="text" id="searchBox" placeholder="Search by student name or email..." style="flex:1; min-width:220px;" />
+      <button class="btn btn-outline btn-sm" id="exportCsvBtn">Export to CSV</button>
     </div>
     <table>
       <thead>
@@ -47,6 +49,7 @@
   import { isAdmin, logoutUser } from "./js/auth.js";
   import { getAllSubmissions, getAllQuestions, saveGrade, clearViolationImages, deleteSubmission } from "./js/admin.js";
   import { normalizeQuestion } from "./js/format.js";
+  import { downloadCsv } from "./js/csv-utils.js";
 
   let submissions = [];
   let questions = [];
@@ -58,6 +61,19 @@
     }
     questions = (await getAllQuestions()).map(normalizeQuestion);
     await loadSubmissions();
+  });
+
+  document.getElementById("exportCsvBtn").addEventListener("click", () => {
+    const header = ["Name", "Email", "Status", "Warnings", "Total Marks", "Total Possible", ...questions.map(q => `${q.label} — Marks`)];
+    const rows = [header];
+    submissions.forEach(s => {
+      const totalAchieved = questions.reduce((sum, q) => sum + (Number(s.grades?.[q.id]?.marks) || 0), 0);
+      const totalPossible = questions.length * 10;
+      const row = [s.studentName || "", s.studentEmail || "", s.status || "", s.violationCount || 0, totalAchieved, totalPossible];
+      questions.forEach(q => row.push(s.grades?.[q.id]?.marks ?? ""));
+      rows.push(row);
+    });
+    downloadCsv("monthly-test-submissions.csv", rows);
   });
 
   document.getElementById("searchBox").addEventListener("input", (e) => {

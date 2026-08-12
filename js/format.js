@@ -13,9 +13,28 @@ export function escapeHtml(str) {
 }
 
 export function formatQuestionText(raw) {
-  const escaped = escapeHtml(raw);
-  // **bold** -> <strong>bold</strong>
-  return escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  let escaped = escapeHtml(raw);
+
+  // Fenced code blocks: ```code``` (multi-line). Must run before everything else.
+  escaped = escaped.replace(/```([\s\S]+?)```/g, (m, code) => `<pre class="q-code-block"><code>${code}</code></pre>`);
+
+  // Note callouts: consecutive lines starting with "> " become a highlighted box.
+  escaped = escaped.replace(/(^|\n)((?:&gt; ?.*(?:\n|$))+)/g, (m, lead, block) => {
+    const lines = block.split("\n").filter(l => l.trim() !== "");
+    const content = lines.map(l => l.replace(/^&gt; ?/, "")).join("<br>");
+    return `${lead}<div class="q-note">${content}</div>`;
+  });
+
+  // Inline code: `code`
+  escaped = escaped.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+
+  // Highlight: ==text==
+  escaped = escaped.replace(/==(.+?)==/g, '<mark class="q-highlight">$1</mark>');
+
+  // Bold: **text**
+  escaped = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+  return escaped;
 }
 
 /**

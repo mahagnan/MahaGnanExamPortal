@@ -19,6 +19,7 @@
     <a href="admin-submissions.html">Submissions &amp; Grading</a>
     <a href="admin-mcq.html">MCQ Questions</a>
     <a href="admin-mcq-results.html"><strong>MCQ Results</strong></a>
+    <a href="admin-students.html">Allowed Students</a>
     <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
   </div>
 </div>
@@ -26,6 +27,41 @@
 <div class="container">
   <h2>MCQ Test Results</h2>
   <p class="small-note">Auto-graded instantly on submission — no manual marking needed. Review proctoring snapshots here if a score looks suspicious.</p>
+
+  <div class="card mt-24">
+    <div class="flex-between" style="flex-wrap:wrap; gap:12px;">
+      <h3 style="margin:0;">Analytics</h3>
+      <button class="btn btn-outline btn-sm" id="exportCsvBtn">Export to CSV</button>
+    </div>
+    <div class="flex gap-16 mt-16" style="flex-wrap:wrap;">
+      <div style="flex:1; min-width:140px;">
+        <div class="small-note" style="text-transform:uppercase; font-size:0.7rem;">Total Attempts</div>
+        <div style="font-family:var(--font-display); font-size:1.6rem; font-weight:700; color:var(--green-deep);" id="statTotal">—</div>
+      </div>
+      <div style="flex:1; min-width:140px;">
+        <div class="small-note" style="text-transform:uppercase; font-size:0.7rem;">Average Score</div>
+        <div style="font-family:var(--font-display); font-size:1.6rem; font-weight:700; color:var(--green-deep);" id="statAvg">—</div>
+      </div>
+      <div style="flex:1; min-width:140px;">
+        <div class="small-note" style="text-transform:uppercase; font-size:0.7rem;">Pass Rate</div>
+        <div style="font-family:var(--font-display); font-size:1.6rem; font-weight:700; color:var(--green-deep);" id="statPassRate">—</div>
+      </div>
+      <div style="flex:1; min-width:140px;">
+        <div class="small-note" style="text-transform:uppercase; font-size:0.7rem;">Avg Time Taken</div>
+        <div style="font-family:var(--font-display); font-size:1.6rem; font-weight:700; color:var(--green-deep);" id="statAvgTime">—</div>
+      </div>
+    </div>
+
+    <div class="circuit-divider" style="margin:18px 0;"><span class="node"></span></div>
+
+    <h4 style="margin:0 0 12px;">Score Distribution</h4>
+    <div id="distChart"></div>
+
+    <div class="circuit-divider" style="margin:18px 0;"><span class="node"></span></div>
+
+    <h4 style="margin:0 0 12px;">Most-Missed Questions</h4>
+    <div id="missedList"></div>
+  </div>
 
   <div class="card mt-24" style="padding:0; overflow:hidden;">
     <div style="padding:16px;">
@@ -46,11 +82,13 @@
   import { auth } from "./js/firebase-config.js";
   import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { isAdmin, logoutUser } from "./js/auth.js";
-  import { getAllMcqSubmissions, deleteMcqSubmission, clearMcqViolationImages } from "./js/mcq.js";
+  import { getAllMcqSubmissions, deleteMcqSubmission, clearMcqViolationImages, getMcqPassPercent } from "./js/mcq.js";
   import { getAllMcqQuestions } from "./js/mcq.js";
+  import { downloadCsv } from "./js/csv-utils.js";
 
   let submissions = [];
   let questions = [];
+  let passPercent = 50;
 
   onAuthStateChanged(auth, async (user) => {
     if (!user || !(await isAdmin(user.uid))) {
@@ -58,7 +96,22 @@
       return;
     }
     questions = await getAllMcqQuestions();
+    passPercent = await getMcqPassPercent();
     await loadSubmissions();
+  });
+
+  document.getElementById("exportCsvBtn").addEventListener("click", () => {
+    const rows = [["Name", "Email", "Score", "Total", "Percent", "Status", "Warnings", "Start Time", "End Time"]];
+    submissions.forEach(s => {
+      const pct = s.totalQuestions ? ((s.score || 0) / s.totalQuestions * 100).toFixed(1) : "0";
+      rows.push([
+        s.studentName || "", s.studentEmail || "", s.score ?? 0, s.totalQuestions ?? 0, pct,
+        s.status || "", s.violationCount || 0,
+        s.startTime?.toDate ? s.startTime.toDate().toLocaleString() : "",
+        s.endTime?.toDate ? s.endTime.toDate().toLocaleString() : ""
+      ]);
+    });
+    downloadCsv("mcq-results.csv", rows);
   });
 
   document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -82,6 +135,86 @@
   async function loadSubmissions() {
     submissions = await getAllMcqSubmissions();
     renderTable(submissions);
+    renderAnalytics(submissions);
+  }
+
+  function renderAnalytics(list) {
+    const graded = list.filter(s => s.totalQuestions > 0);
+    document.getElementById("statTotal").textContent = list.length;
+
+    if (graded.length === 0) {
+      document.getElementById("statAvg").textContent = "—";
+      document.getElementById("statPassRate").textContent = "—";
+      document.getElementById("statAvgTime").textContent = "—";
+      document.getElementById("distChart").innerHTML = `<p class="small-note">No attempts yet.</p>`;
+      document.getElementById("missedList").innerHTML = `<p class="small-note">No attempts yet.</p>`;
+      return;
+    }
+
+    const percents = graded.map(s => (s.score || 0) / s.totalQuestions * 100);
+    const avgPct = percents.reduce((a, b) => a + b, 0) / percents.length;
+    const passCount = percents.filter(p => p >= passPercent).length;
+    document.getElementById("statAvg").textContent = `${avgPct.toFixed(1)}%`;
+    document.getElementById("statPassRate").textContent = `${((passCount / graded.length) * 100).toFixed(0)}%`;
+
+    const timedSubs = graded.filter(s => s.startTime?.toDate && s.endTime?.toDate);
+    if (timedSubs.length > 0) {
+      const avgSecs = timedSubs.reduce((sum, s) => sum + (s.endTime.toDate() - s.startTime.toDate()) / 1000, 0) / timedSubs.length;
+      const m = Math.floor(avgSecs / 60), sec = Math.round(avgSecs % 60);
+      document.getElementById("statAvgTime").textContent = `${m}m ${sec}s`;
+    } else {
+      document.getElementById("statAvgTime").textContent = "—";
+    }
+
+    // Score distribution buckets
+    const buckets = [
+      { label: "0-20%", min: 0, max: 20, count: 0 },
+      { label: "21-40%", min: 20, max: 40, count: 0 },
+      { label: "41-60%", min: 40, max: 60, count: 0 },
+      { label: "61-80%", min: 60, max: 80, count: 0 },
+      { label: "81-100%", min: 80, max: 100.01, count: 0 }
+    ];
+    percents.forEach(p => {
+      const b = buckets.find(b => p >= b.min && p < b.max);
+      if (b) b.count++;
+    });
+    const maxCount = Math.max(...buckets.map(b => b.count), 1);
+    document.getElementById("distChart").innerHTML = buckets.map(b => `
+      <div class="dist-bar-row">
+        <span class="dist-bar-label">${b.label}</span>
+        <div class="dist-bar-track"><div class="dist-bar-fill" style="width:${(b.count / maxCount) * 100}%;"></div></div>
+        <span class="dist-bar-count">${b.count}</span>
+      </div>
+    `).join("");
+
+    // Most-missed questions (across submissions whose answers match current questions)
+    const missCounts = {};
+    const attemptCounts = {};
+    graded.forEach(s => {
+      if (!s.answers) return;
+      questions.forEach(q => {
+        if (!(q.id in s.answers)) return;
+        attemptCounts[q.id] = (attemptCounts[q.id] || 0) + 1;
+        if (s.answers[q.id] !== q.correctIndex) missCounts[q.id] = (missCounts[q.id] || 0) + 1;
+      });
+    });
+    const ranked = questions
+      .map(q => ({ q, missed: missCounts[q.id] || 0, attempts: attemptCounts[q.id] || 0 }))
+      .filter(r => r.attempts > 0)
+      .sort((a, b) => (b.missed / b.attempts) - (a.missed / a.attempts))
+      .slice(0, 5);
+
+    const missedList = document.getElementById("missedList");
+    if (ranked.length === 0) {
+      missedList.innerHTML = `<p class="small-note">Not enough data yet.</p>`;
+    } else {
+      missedList.innerHTML = ranked.map(r => `
+        <div class="flex-between" style="padding:8px 0; border-bottom:1px solid var(--gray-line);">
+          <span style="flex:1; padding-right:12px;">${r.q.text.length > 90 ? r.q.text.slice(0, 90) + "…" : r.q.text}</span>
+          <span class="badge badge-red">${r.missed}/${r.attempts} missed</span>
+        </div>
+      `).join("");
+    }
   }
 
   function renderTable(list) {

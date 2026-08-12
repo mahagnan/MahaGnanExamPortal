@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Allowed Students — Mah'a Gnan Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <img src="assets/logo.png" alt="" />
+    <span>Mah'a <em>Gnan</em> Admin</span>
+  </div>
+  <div class="flex gap-16" style="align-items:center;">
+    <a href="admin-dashboard.html">Question Bank</a>
+    <a href="admin-submissions.html">Submissions &amp; Grading</a>
+    <a href="admin-mcq.html">MCQ Questions</a>
+    <a href="admin-mcq-results.html">MCQ Results</a>
+    <a href="admin-students.html"><strong>Allowed Students</strong></a>
+    <button class="btn btn-outline btn-sm" id="logoutBtn">Log Out</button>
+  </div>
+</div>
+
+<div class="container">
+  <h2>Allowed Students</h2>
+  <p class="small-note">This is an <strong>optional</strong> allowlist. If this list has at least one email, only those emails can create a student account on the signup page — anyone else is blocked. If the list is empty, signup stays open to everyone (default behavior).</p>
+
+  <div class="card mt-24">
+    <div class="flex-between" style="flex-wrap:wrap; gap:16px; align-items:flex-start;">
+      <div style="flex:1; min-width:240px;">
+        <h3 style="margin-top:0;">Bulk Upload from CSV</h3>
+        <p class="small-note">One email per line, or a CSV with an "email" column.</p>
+        <input type="file" id="csvInput" accept=".csv,text/csv" />
+      </div>
+      <button class="btn btn-primary btn-sm" id="csvUploadBtn" style="align-self:flex-end;">Upload &amp; Add Emails</button>
+    </div>
+    <div id="csvResultMsg" class="mt-16"></div>
+  </div>
+
+  <div class="card mt-24">
+    <h3 style="margin-top:0;">Add a Single Email</h3>
+    <div class="flex gap-8">
+      <input type="email" id="singleEmailInput" placeholder="student@example.com" style="flex:1;" />
+      <button class="btn btn-outline btn-sm" id="addSingleBtn">Add</button>
+    </div>
+  </div>
+
+  <div class="circuit-divider"><span class="node"></span></div>
+
+  <div class="flex-between mt-16" style="flex-wrap:wrap; gap:12px;">
+    <h3>Allowed Emails</h3>
+    <div class="flex gap-8" style="align-items:center;">
+      <span class="badge badge-green" id="countEmails">0 Emails</span>
+      <button class="btn btn-sm" id="deleteAllBtn" style="background:var(--red-alert); color:var(--white); border:none;">Remove All (Open Signup to Everyone)</button>
+    </div>
+  </div>
+
+  <div id="emailList" class="mt-16"></div>
+</div>
+
+<script type="module">
+  import { auth } from "./js/firebase-config.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { isAdmin, logoutUser } from "./js/auth.js";
+  import {
+    getAllowedStudents, addAllowedStudent, bulkAddAllowedStudents,
+    deleteAllowedStudent, deleteAllAllowedStudents
+  } from "./js/admin.js";
+  import { parseEmailCsv } from "./js/csv-utils.js";
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user || !(await isAdmin(user.uid))) {
+      window.location.href = "admin-login.html";
+      return;
+    }
+    renderList();
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await logoutUser();
+    window.location.href = "admin-login.html";
+  });
+
+  document.getElementById("addSingleBtn").addEventListener("click", async () => {
+    const input = document.getElementById("singleEmailInput");
+    const email = input.value.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+    await addAllowedStudent(email);
+    input.value = "";
+    renderList();
+  });
+
+  document.getElementById("csvUploadBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("csvInput");
+    const resultMsg = document.getElementById("csvResultMsg");
+    resultMsg.innerHTML = "";
+    const file = fileInput.files[0];
+    if (!file) { resultMsg.innerHTML = `<p class="error-text">Please choose a file first.</p>`; return; }
+
+    const btn = document.getElementById("csvUploadBtn");
+    btn.disabled = true;
+    btn.textContent = "Uploading...";
+    try {
+      const rawText = await file.text();
+      const { emails, errors } = parseEmailCsv(rawText);
+      if (emails.length > 0) await bulkAddAllowedStudents(emails);
+
+      let html = "";
+      if (emails.length > 0) html += `<p style="color:var(--green-deep); font-weight:600;">&#10003; Added ${emails.length} email${emails.length === 1 ? "" : "s"}.</p>`;
+      if (errors.length > 0) html += `<p class="error-text" style="margin-top:8px;">${errors.length} entr${errors.length === 1 ? "y" : "ies"} skipped:</p><ul style="margin:4px 0 0 18px; color:var(--red-alert); font-size:0.85rem;">${errors.map(e => `<li>${e}</li>`).join("")}</ul>`;
+      if (emails.length === 0 && errors.length === 0) html = `<p class="error-text">No valid emails found in that file.</p>`;
+      resultMsg.innerHTML = html;
+      fileInput.value = "";
+      renderList();
+    } catch (err) {
+      console.error("CSV upload failed:", err);
+      resultMsg.innerHTML = `<p class="error-text">Could not process the file: ${err.message}</p>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Upload & Add Emails";
+    }
+  });
+
+  document.getElementById("deleteAllBtn").addEventListener("click", async () => {
+    const list = await getAllowedStudents();
+    if (list.length === 0) { alert("The allowlist is already empty."); return; }
+    const sure = confirm(`Remove all ${list.length} allowed emails? This re-opens signup to everyone. Continue?`);
+    if (!sure) return;
+    const btn = document.getElementById("deleteAllBtn");
+    btn.disabled = true;
+    try {
+      const count = await deleteAllAllowedStudents();
+      alert(`Removed ${count} emails. Signup is now open to everyone.`);
+      renderList();
+    } catch (err) {
+      alert("Could not remove all emails: " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  async function renderList() {
+    const list = await getAllowedStudents();
+    list.sort((a, b) => (a.email || "").localeCompare(b.email || ""));
+    document.getElementById("countEmails").textContent = `${list.length} Email${list.length === 1 ? "" : "s"}`;
+
+    const container = document.getElementById("emailList");
+    if (list.length === 0) {
+      container.innerHTML = `<div class="card"><p class="small-note" style="margin:0;">No allowed emails yet — signup is currently open to everyone.</p></div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="card" style="padding:0; overflow:hidden;">
+        <table>
+          <thead><tr><th>Email</th><th></th></tr></thead>
+          <tbody>
+            ${list.map(item => `
+              <tr>
+                <td>${item.email}</td>
+                <td><button class="btn btn-outline btn-sm delBtn" data-id="${item.id}">Remove</button></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+    container.querySelectorAll(".delBtn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (confirm("Remove this email from the allowlist?")) {
+          await deleteAllowedStudent(btn.dataset.id);
+          renderList();
+        }
+      });
+    });
+  }
+</script>
+
+</body>
+</html>

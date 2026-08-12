@@ -12,7 +12,11 @@ import { getStudentProfile } from "./auth.js";
 import { buildSessionFolder, uploadSnapshot, captureFrameAsBlob } from "./cloudinary.js";
 import { loadFaceModels, monitorFrame } from "./face-detection.js";
 import { formatQuestionText } from "./format.js";
-import { getAllMcqQuestions, getMcqDurationMinutes } from "./mcq.js";
+import {
+  getAllMcqQuestions, getMcqDurationMinutes, getMcqQuestionsPerAttempt,
+  getMcqSchedule, checkScheduleWindow, getTrustedNow, getMcqPassPercent,
+  getMcqLeaderboardEnabled, getMcqLeaderboard
+} from "./mcq.js";
 
 const MAX_STRIKES = 3;
 const ROUTINE_CAPTURE_MS = 60 * 1000;
@@ -48,6 +52,15 @@ export async function initMcqExam() {
     if (!user) { window.location.href = "student-login.html"; return; }
     uid = user.uid;
     profile = await getStudentProfile(uid);
+
+    const schedule = await getMcqSchedule();
+    const trustedNow = await getTrustedNow();
+    const windowCheck = checkScheduleWindow(schedule, trustedNow);
+    if (!windowCheck.open) {
+      showScheduleGate(windowCheck.reason, schedule);
+      return;
+    }
+
     sessionFolder = buildSessionFolder((profile?.name || "student") + "-mcq", uid);
 
     timeRemaining = (await getMcqDurationMinutes()) * 60;
@@ -64,6 +77,23 @@ export async function initMcqExam() {
     startFaceMonitoring();
     attachAntiCheatBasics();
   });
+}
+
+function showScheduleGate(reason, schedule) {
+  const fmt = (iso) => iso ? new Date(iso).toLocaleString() : "";
+  const message = reason === "before"
+    ? `This test hasn't opened yet. It opens at <strong>${fmt(schedule.startTime)}</strong>.`
+    : `This test window has closed. It closed at <strong>${fmt(schedule.endTime)}</strong>.`;
+  document.body.innerHTML = `
+    <div class="page-center">
+      <div class="card text-center" style="max-width:440px;">
+        <div class="badge badge-amber" style="font-size:0.85rem; padding:6px 16px; margin-bottom:14px; display:inline-block;">Test Not Available</div>
+        <h2>Come back later</h2>
+        <p class="mt-16">${message}</p>
+        <a href="exam-select.html" class="btn btn-outline mt-16">Back</a>
+      </div>
+    </div>
+  `;
 }
 
 async function startCamera() {
@@ -88,7 +118,9 @@ function shuffle(arr) {
 
 async function loadQuestionsShuffled() {
   const all = await getAllMcqQuestions();
-  const shuffledQuestions = shuffle(all);
+  const perAttempt = await getMcqQuestionsPerAttempt();
+  const pool = shuffle(all);
+  const shuffledQuestions = (perAttempt > 0 && perAttempt < pool.length) ? pool.slice(0, perAttempt) : pool;
   questions = shuffledQuestions.map(q => {
     const order = shuffle([0, 1, 2, 3]); // order[k] = original index shown at position k
     return {
@@ -341,8 +373,19 @@ async function finalizeSubmit(reasonCode) {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 
   const total = questions.length;
+  const percent = total > 0 ? (score / total) * 100 : 0;
   const feedback = getPerformanceFeedback(score, total, profile?.name);
   const mistakeCount = questions.filter(q => selectedAnswers[q.id] !== q.correctIndex).length;
+
+  const [passPercent, leaderboardEnabled] = await Promise.all([
+    getMcqPassPercent(),
+    getMcqLeaderboardEnabled()
+  ]);
+  const passed = percent >= passPercent;
+  let leaderboard = [];
+  if (leaderboardEnabled) {
+    try { leaderboard = await getMcqLeaderboard(10); } catch (err) { console.warn("Leaderboard load failed", err); }
+  }
 
   document.body.innerHTML = `
     <div class="container" style="max-width:720px; padding-top:40px; padding-bottom:60px;">
@@ -359,7 +402,24 @@ async function finalizeSubmit(reasonCode) {
             ? "Time's up — your test was automatically submitted."
             : "Submitted successfully."
         }</p>
+        <button class="btn btn-sm mt-16" id="downloadPdfBtn" style="background:rgba(255,255,255,0.12); color:var(--white); border:1px solid rgba(255,255,255,0.3);">
+          &#8681; Download ${passed ? "Certificate" : "Result"} PDF
+        </button>
       </div>
+
+      ${leaderboardEnabled ? `
+        <div class="circuit-divider"><span class="node"></span></div>
+        <h3>Leaderboard — Top Scorers</h3>
+        <div class="card mt-16">
+          ${leaderboard.length === 0 ? `<p class="small-note" style="margin:0;">No results yet.</p>` : leaderboard.map((entry, i) => `
+            <div class="leaderboard-row ${entry.id === uid ? "me" : ""}">
+              <span class="leaderboard-rank">#${i + 1}</span>
+              <span style="flex:1;">${entry.studentName || "Anonymous"}${entry.id === uid ? " (You)" : ""}</span>
+              <span class="badge badge-black">${entry.score} / ${entry.totalQuestions}</span>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
 
       <div class="circuit-divider"><span class="node"></span></div>
 
@@ -374,6 +434,57 @@ async function finalizeSubmit(reasonCode) {
       <p class="small-note text-center mt-24">You may close this window.</p>
     </div>
   `;
+
+  document.getElementById("downloadPdfBtn")?.addEventListener("click", () => {
+    downloadResultPdf({ score, total, percent, passed, name: profile?.name || "Student" });
+  });
+}
+
+/** Generates a simple certificate/result PDF client-side using jsPDF (loaded via CDN in mcq-exam.html). */
+function downloadResultPdf({ score, total, percent, passed, name }) {
+  const { jsPDF } = window.jspdf || {};
+  if (!jsPDF) { alert("PDF library failed to load. Please check your internet connection and try again."); return; }
+
+  const pdfDoc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const pageW = pdfDoc.internal.pageSize.getWidth();
+  const pageH = pdfDoc.internal.pageSize.getHeight();
+
+  pdfDoc.setFillColor(13, 15, 13);
+  pdfDoc.rect(0, 0, pageW, pageH, "F");
+  pdfDoc.setDrawColor(67, 160, 71);
+  pdfDoc.setLineWidth(3);
+  pdfDoc.rect(24, 24, pageW - 48, pageH - 48);
+
+  pdfDoc.setTextColor(67, 160, 71);
+  pdfDoc.setFontSize(14);
+  pdfDoc.text("MAH'A GNAN", pageW / 2, 90, { align: "center" });
+
+  pdfDoc.setTextColor(255, 255, 255);
+  pdfDoc.setFontSize(28);
+  pdfDoc.text(passed ? "Certificate of Achievement" : "MCQ Test — Result Report", pageW / 2, 130, { align: "center" });
+
+  pdfDoc.setFontSize(14);
+  pdfDoc.setTextColor(200, 220, 200);
+  pdfDoc.text(passed ? "This certifies that" : "Result for", pageW / 2, 175, { align: "center" });
+
+  pdfDoc.setFontSize(26);
+  pdfDoc.setTextColor(255, 255, 255);
+  pdfDoc.text(name, pageW / 2, 210, { align: "center" });
+
+  pdfDoc.setFontSize(14);
+  pdfDoc.setTextColor(200, 220, 200);
+  pdfDoc.text(
+    passed
+      ? `has successfully completed the MCQ Test with a score of ${score} / ${total} (${percent.toFixed(1)}%)`
+      : `attempted the MCQ Test and scored ${score} / ${total} (${percent.toFixed(1)}%)`,
+    pageW / 2, 240, { align: "center" }
+  );
+
+  pdfDoc.setFontSize(11);
+  pdfDoc.setTextColor(150, 170, 150);
+  pdfDoc.text(`Date: ${new Date().toLocaleDateString()}`, pageW / 2, 290, { align: "center" });
+
+  pdfDoc.save(`${name.replace(/\s+/g, "_")}_MCQ_Result.pdf`);
 }
 
 window.addEventListener("beforeunload", (e) => {
